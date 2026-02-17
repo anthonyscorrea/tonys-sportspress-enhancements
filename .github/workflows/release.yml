@@ -1,0 +1,37 @@
+name: Release Plugin Zip
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build plugin zip
+        id: build
+        run: |
+          set -euo pipefail
+          PLUGIN_SLUG="${GITHUB_REPOSITORY##*/}"
+          TAG="${GITHUB_REF_NAME}"
+          ZIP_NAME="${PLUGIN_SLUG}-${TAG}.zip"
+
+          mkdir -p dist
+          git archive --format=zip --prefix="${PLUGIN_SLUG}/" -o "dist/${ZIP_NAME}" HEAD
+
+          echo "zip_path=dist/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release and upload zip
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.build.outputs.zip_path }}
+          fail_on_unmatched_files: true
