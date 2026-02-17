@@ -16,4 +16,4 @@
 // Include other files here
 require_once plugin_dir_path(__FILE__) . 'includes/open-graph-tags.php';
 require_once plugin_dir_path(__FILE__) . 'includes/featured-image-generator.php';
-require_once plugin_dir_path(__FILE__) . 'includes/sp-event-permalink.php';
+require_once plugin_dir_path(__FILE__) . 'includes/sp-event-permalink.php';require_once plugin_dir_path(__FILE__) . 'includes/sp-event-admin-week-filter.php';
