@@ -11,6 +11,121 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Screen-option defaults for event list filters.
+ *
+ * @return array<string, bool>
+ */
+function tony_sportspress_event_filter_defaults() {
+	return array(
+		'month'     => true,
+		'week'      => true,
+		'team'      => true,
+		'venue'     => true,
+		'league'    => true,
+		'season'    => true,
+		'match_day' => true,
+	);
+}
+
+/**
+ * Build user meta key for an event filter screen option.
+ *
+ * @param string $key Filter key.
+ * @return string
+ */
+function tony_sportspress_event_filter_meta_key( $key ) {
+	return 'tony_sp_event_filter_' . $key;
+}
+
+/**
+ * Check whether a filter is enabled for the current user.
+ *
+ * @param string $key Filter key.
+ * @return bool
+ */
+function tony_sportspress_event_filter_enabled( $key ) {
+	$defaults = tony_sportspress_event_filter_defaults();
+	if ( ! array_key_exists( $key, $defaults ) ) {
+		return true;
+	}
+
+	$user_id = get_current_user_id();
+	if ( ! $user_id ) {
+		return (bool) $defaults[ $key ];
+	}
+
+	$stored = get_user_meta( $user_id, tony_sportspress_event_filter_meta_key( $key ), true );
+	if ( '' === $stored ) {
+		return (bool) $defaults[ $key ];
+	}
+
+	return '1' === (string) $stored;
+}
+
+/**
+ * Persist event filter Screen Options via AJAX.
+ */
+function tony_sportspress_save_event_filter_screen_options_ajax() {
+	if ( ! current_user_can( 'edit_posts' ) ) {
+		wp_send_json_error();
+	}
+
+	check_ajax_referer( 'tony_sp_event_filters', 'nonce' );
+
+	$defaults = tony_sportspress_event_filter_defaults();
+	$filters  = isset( $_POST['filters'] ) && is_array( $_POST['filters'] ) ? $_POST['filters'] : array();
+	$user_id  = get_current_user_id();
+
+	foreach ( $defaults as $key => $_enabled ) {
+		$value = isset( $filters[ $key ] ) ? sanitize_text_field( wp_unslash( $filters[ $key ] ) ) : '0';
+		update_user_meta( $user_id, tony_sportspress_event_filter_meta_key( $key ), '1' === $value ? '1' : '0' );
+	}
+
+	wp_send_json_success();
+}
+add_action( 'wp_ajax_tony_sp_event_filter_prefs_save', 'tony_sportspress_save_event_filter_screen_options_ajax' );
+
+/**
+ * Add filter visibility toggles to Screen Options on event list admin page.
+ *
+ * @param string    $settings Existing settings HTML.
+ * @param WP_Screen $screen   Current screen.
+ * @return string
+ */
+function tony_sportspress_event_filter_screen_options_markup( $settings, $screen ) {
+	if ( ! $screen || 'edit-sp_event' !== $screen->id ) {
+		return $settings;
+	}
+
+	$labels = array(
+		'month'     => __( 'Month/Year', 'tonys-sportspress-enhancements' ),
+		'week'      => __( 'Week', 'tonys-sportspress-enhancements' ),
+		'team'      => __( 'Team', 'tonys-sportspress-enhancements' ),
+		'venue'     => __( 'Venue', 'tonys-sportspress-enhancements' ),
+		'league'    => __( 'League', 'tonys-sportspress-enhancements' ),
+		'season'    => __( 'Season', 'tonys-sportspress-enhancements' ),
+		'match_day' => __( 'Match Day', 'tonys-sportspress-enhancements' ),
+	);
+
+	$settings .= '<fieldset class="metabox-prefs">';
+	$settings .= '<legend>' . esc_html__( 'Event Filters', 'tonys-sportspress-enhancements' ) . '</legend>';
+
+	foreach ( $labels as $key => $label ) {
+		$meta_key = tony_sportspress_event_filter_meta_key( $key );
+		$checked  = tony_sportspress_event_filter_enabled( $key ) ? ' checked="checked"' : '';
+		$settings .= '<label for="' . esc_attr( $meta_key ) . '">';
+		$settings .= '<input type="checkbox" id="' . esc_attr( $meta_key ) . '" name="' . esc_attr( $meta_key ) . '" value="1"' . $checked . ' />';
+		$settings .= esc_html( $label );
+		$settings .= '</label>';
+	}
+
+	$settings .= '</fieldset>';
+
+	return $settings;
+}
+add_filter( 'screen_settings', 'tony_sportspress_event_filter_screen_options_markup', 10, 2 );
+
+/**
  * Parse an ISO week input (e.g. 2026-W07) from the request.
  *
  * @return array{year:int,week:int}|null
@@ -41,6 +156,9 @@ function tony_sportspress_parse_admin_week_filter() {
  */
 function tony_sportspress_render_admin_week_filter( $post_type ) {
 	if ( 'sp_event' !== $post_type ) {
+		return;
+	}
+	if ( ! tony_sportspress_event_filter_enabled( 'week' ) ) {
 		return;
 	}
 
@@ -85,8 +203,47 @@ function tony_sportspress_admin_week_filter_styles() {
 	if ( ! $screen || 'edit-sp_event' !== $screen->id ) {
 		return;
 	}
+	$hide = array(
+		'month'     => ! tony_sportspress_event_filter_enabled( 'month' ),
+		'team'      => ! tony_sportspress_event_filter_enabled( 'team' ),
+		'venue'     => ! tony_sportspress_event_filter_enabled( 'venue' ),
+		'league'    => ! tony_sportspress_event_filter_enabled( 'league' ),
+		'season'    => ! tony_sportspress_event_filter_enabled( 'season' ),
+		'match_day' => ! tony_sportspress_event_filter_enabled( 'match_day' ),
+		'week'      => ! tony_sportspress_event_filter_enabled( 'week' ),
+	);
 	?>
 	<style>
+		<?php if ( $hide['month'] ) : ?>
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="m"] { display: none !important; }
+		<?php endif; ?>
+		<?php if ( $hide['team'] ) : ?>
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="team"],
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="team"] + .chosen-container,
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="team"] + .select2 { display: none !important; }
+		<?php endif; ?>
+		<?php if ( $hide['venue'] ) : ?>
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="sp_venue"],
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="sp_venue"] + .chosen-container,
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="sp_venue"] + .select2 { display: none !important; }
+		<?php endif; ?>
+		<?php if ( $hide['league'] ) : ?>
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="sp_league"],
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="sp_league"] + .chosen-container,
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="sp_league"] + .select2 { display: none !important; }
+		<?php endif; ?>
+		<?php if ( $hide['season'] ) : ?>
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="sp_season"],
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="sp_season"] + .chosen-container,
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) select[name="sp_season"] + .select2 { display: none !important; }
+		<?php endif; ?>
+		<?php if ( $hide['match_day'] ) : ?>
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) input[name="match_day"] { display: none !important; }
+		<?php endif; ?>
+		<?php if ( $hide['week'] ) : ?>
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) #sp_week_filter,
+		.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) #sp-week-filter-summary { display: none !important; }
+		<?php endif; ?>
 		@media (max-width: 1200px) {
 			.post-type-sp_event .tablenav.top .alignleft.actions:not(.bulkactions) {
 				display: flex;
@@ -126,6 +283,47 @@ function tony_sportspress_admin_week_filter_script() {
 	?>
 	<script>
 	(function() {
+		const filterCheckboxes = Array.from(
+			document.querySelectorAll('#screen-options-wrap input[type="checkbox"][id^="tony_sp_event_filter_"]')
+		);
+
+		function saveFilterPrefs() {
+			if (!filterCheckboxes.length || typeof ajaxurl === 'undefined') {
+				return;
+			}
+
+			const body = new URLSearchParams();
+			body.append('action', 'tony_sp_event_filter_prefs_save');
+			body.append('nonce', <?php echo wp_json_encode( wp_create_nonce( 'tony_sp_event_filters' ) ); ?>);
+
+			filterCheckboxes.forEach(function(checkbox) {
+				const key = checkbox.id.replace('tony_sp_event_filter_', '');
+				body.append('filters[' + key + ']', checkbox.checked ? '1' : '0');
+			});
+
+			fetch(ajaxurl, {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+				},
+				body: body.toString(),
+				keepalive: true
+			}).catch(function() {});
+		}
+
+		filterCheckboxes.forEach(function(checkbox) {
+			checkbox.addEventListener('change', saveFilterPrefs);
+		});
+
+		const monthSelect = document.querySelector('select[name="m"]');
+		if (monthSelect) {
+			const allDates = monthSelect.querySelector('option[value="0"]');
+			if (allDates) {
+				allDates.textContent = <?php echo wp_json_encode( __( 'Month/Year', 'tonys-sportspress-enhancements' ) ); ?>;
+			}
+		}
+
 		const input = document.getElementById('sp_week_filter');
 		const summary = document.getElementById('sp-week-filter-summary');
 		if (!input || !summary) {

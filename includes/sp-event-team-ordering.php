@@ -82,11 +82,14 @@ function tony_sportspress_add_event_results_order_option( $options ) {
 	}
 
 	$options[] = array(
-		'title'   => esc_attr__( 'Order', 'sportspress' ),
-		'desc'    => esc_attr__( 'Show away team first', 'tonys-sportspress-enhancements' ),
-		'id'      => 'tony_sportspress_event_results_away_first',
-		'default' => 'yes',
-		'type'    => 'checkbox',
+		'title'   => esc_attr__( 'Row order', 'tonys-sportspress-enhancements' ),
+		'id'      => 'tony_sportspress_event_results_row_order',
+		'default' => 'home_away',
+		'type'    => 'radio',
+		'options' => array(
+			'home_away' => sprintf( '%s | %s', esc_attr__( 'Home', 'sportspress' ), esc_attr__( 'Away', 'sportspress' ) ),
+			'away_home' => sprintf( '%s | %s', esc_attr__( 'Away', 'sportspress' ), esc_attr__( 'Home', 'sportspress' ) ),
+		),
 	);
 
 	return $options;

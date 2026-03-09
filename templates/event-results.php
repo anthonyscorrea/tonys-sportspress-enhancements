@@ -53,10 +53,43 @@ $output     = '';
 $table_rows = '';
 $i          = 0;
 
-// Event Results row order is controlled by a dedicated Event Results option.
-$away_first = get_option( 'tony_sportspress_event_results_away_first', 'yes' ) === 'yes' ? true : false;
-if ( $away_first ) {
-	$data = array_reverse( $data, true );
+// Event Results row order is controlled in SportsPress > Settings > Events > Event Results.
+$row_order = get_option( 'tony_sportspress_event_results_row_order', '' );
+if ( '' === $row_order ) {
+	// Backward compatibility with the legacy checkbox option.
+	$legacy_away_first = get_option( 'tony_sportspress_event_results_away_first', 'no' ) === 'yes';
+	$row_order         = $legacy_away_first ? 'away_home' : 'home_away';
+}
+
+$teams = array_values( array_filter( array_map( 'absint', (array) get_post_meta( $id, 'sp_team', false ) ) ) );
+if ( 'away_home' === $row_order ) {
+	$teams = array_reverse( $teams );
+}
+
+if ( ! empty( $teams ) ) {
+	$ordered = array();
+
+	foreach ( $teams as $index => $team_id ) {
+		if ( array_key_exists( $team_id, $data ) ) {
+			$ordered[ $team_id ] = $data[ $team_id ];
+			continue;
+		}
+
+		// SportsPress can store positional rows in team order (0,1,...) depending on context.
+		if ( array_key_exists( $index, $data ) ) {
+			$ordered[ $team_id ] = $data[ $index ];
+		}
+	}
+
+	foreach ( $data as $team_id => $result ) {
+		if ( ! array_key_exists( $team_id, $ordered ) ) {
+			$ordered[ $team_id ] = $result;
+		}
+	}
+
+	if ( ! empty( $ordered ) ) {
+		$data = $ordered;
+	}
 }
 
 foreach ( $data as $team_id => $result ) :
