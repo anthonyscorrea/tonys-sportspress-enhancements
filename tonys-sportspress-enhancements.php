@@ -12,6 +12,21 @@
  * @package         Tonys_Sportspress_Enhancements
  */
 
+if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION' ) ) {
+	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION', '0.1.5' );
+}
+
+if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_FILE' ) ) {
+	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_FILE', __FILE__ );
+}
+
+if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_DIR' ) ) {
+	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_DIR', plugin_dir_path( __FILE__ ) );
+}
+
+if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_URL' ) ) {
+	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_URL', plugin_dir_url( __FILE__ ) );
+}
 
 // Include other files here
 require_once plugin_dir_path(__FILE__) . 'includes/open-graph-tags.php';
@@ -21,3 +36,4 @@ require_once plugin_dir_path(__FILE__) . 'includes/sp-event-csv.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-event-admin-week-filter.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-event-quick-edit-officials.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-event-team-ordering.php';
+require_once plugin_dir_path(__FILE__) . 'includes/sp-printable-calendars.php';

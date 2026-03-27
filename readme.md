@@ -9,12 +9,14 @@ Tony's SportsPress Enhancements is a collection of add-ons for the [SportsPress]
 - **Custom event permalinks** for `sp_event` post types, including season and team slugs.
 - **Open Graph meta tags** for events, with dynamic titles, descriptions, and images.
 - **Automatic featured image generation** for events, combining team colors and logos into a shareable image.
+- **Printable team schedules** with season-aware venue colors and a print-friendly calendar layout.
 
 ## Features
 
 - Custom rewrite rules and permalinks for SportsPress events.
 - Open Graph integration for better social sharing.
 - Dynamic, cached event images based on team data.
+- Printable schedule pages linked from team profiles.
 - Compatible with WordPress 4.5+ and PHP 5.6+.
 
 ## Installation
