@@ -7,7 +7,7 @@
  * Author URI:      https://github.com/anthonyscorrea/
  * Text Domain:     tonys-sportspress-enhancements
  * Domain Path:     /languages
- * Version:         0.1.4
+ * Version:         0.1.5
  *
  * @package         Tonys_Sportspress_Enhancements
  */
