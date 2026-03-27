@@ -75,15 +75,27 @@ function custom_event_rewrite_flush() {
 register_activation_hook(__FILE__, 'custom_event_rewrite_flush');
 register_deactivation_hook(__FILE__, 'flush_rewrite_rules');
 
-// Modify the query to handle custom permalinks and include future posts
-function custom_event_parse_request($query) {
-  $post_type = sp_array_value( $query->query, 'post_type', null );
-  if (isset($query->query_vars['post_type']) && $query->query_vars['post_type'] === 'sp_event') {
-      if (isset($query->query_vars['p'])) {
-          $query->set('post_type', 'sp_event');
-          $query->set('p', $query->query_vars['p']);
-          $query->set('post_status', array('publish', 'future'));
-      }
-  }
+// Modify the front-end single event query to allow scheduled events to resolve.
+function custom_event_parse_request( $query ) {
+	if ( ! $query instanceof WP_Query ) {
+		return;
+	}
+
+	if ( is_admin() || ! $query->is_main_query() ) {
+		return;
+	}
+
+	if ( 'sp_event' !== $query->get( 'post_type' ) ) {
+		return;
+	}
+
+	$post_id = absint( $query->get( 'p' ) );
+	if ( $post_id <= 0 ) {
+		return;
+	}
+
+	$query->set( 'post_type', 'sp_event' );
+	$query->set( 'p', $post_id );
+	$query->set( 'post_status', array( 'publish', 'future' ) );
 }
 add_action('pre_get_posts', 'custom_event_parse_request');
