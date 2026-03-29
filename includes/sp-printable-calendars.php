@@ -229,6 +229,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				'sync_interval_minutes' => isset( $existing['sync_interval_minutes'] ) ? absint( (string) $existing['sync_interval_minutes'] ) : 60,
 				'venue_color_overrides' => $this->sanitize_venue_color_overrides( isset( $current['venue_color_overrides'] ) ? $current['venue_color_overrides'] : array() ),
 				'venue_use_team_primary' => $this->sanitize_venue_primary_flags( isset( $current['venue_use_team_primary'] ) ? $current['venue_use_team_primary'] : array() ),
+				'printable_venue_label_mode' => $this->sanitize_venue_label_mode( isset( $current['printable_venue_label_mode'] ) ? $current['printable_venue_label_mode'] : '' ),
 			);
 		}
 
@@ -286,6 +287,17 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				);
 			}
 			echo '</select>';
+			echo '</td>';
+			echo '</tr>';
+			echo '<tr>';
+			echo '<th scope="row"><label for="asc-sp-printable-venue-label-mode">' . esc_html__( 'Venue Label Under Time', 'tonys-sportspress-enhancements' ) . '</label></th>';
+			echo '<td>';
+			echo '<select id="asc-sp-printable-venue-label-mode" name="' . esc_attr( self::OPTION_KEY . '[printable_venue_label_mode]' ) . '">';
+			foreach ( $this->get_venue_label_mode_options() as $mode => $label ) {
+				echo '<option value="' . esc_attr( $mode ) . '" ' . selected( $this->get_venue_label_mode(), $mode, false ) . '>' . esc_html( $label ) . '</option>';
+			}
+			echo '</select>';
+			echo '<p class="description">' . esc_html__( 'Choose whether the printable schedule shows the venue full name, abbreviation, or short name below each game time.', 'tonys-sportspress-enhancements' ) . '</p>';
 			echo '</td>';
 			echo '</tr>';
 			echo '</tbody></table>';
@@ -562,6 +574,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				'sync_interval_minutes' => 60,
 				'venue_color_overrides' => array(),
 				'venue_use_team_primary'=> array(),
+				'printable_venue_label_mode' => 'full_name',
 			);
 		}
 
@@ -572,6 +585,32 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 */
 		private function get_settings() {
 			return wp_parse_args( get_option( self::OPTION_KEY, array() ), $this->default_settings() );
+		}
+
+		/**
+		 * Get supported venue label modes.
+		 *
+		 * @return array
+		 */
+		private function get_venue_label_mode_options() {
+			return array(
+				'full_name'    => __( 'Full Name', 'tonys-sportspress-enhancements' ),
+				'abbreviation' => __( 'Abbreviation', 'tonys-sportspress-enhancements' ),
+				'short_name'   => __( 'Short Name', 'tonys-sportspress-enhancements' ),
+			);
+		}
+
+		/**
+		 * Sanitize venue label mode.
+		 *
+		 * @param mixed $value Raw value.
+		 * @return string
+		 */
+		private function sanitize_venue_label_mode( $value ) {
+			$mode    = is_string( $value ) ? sanitize_key( $value ) : '';
+			$allowed = array_keys( $this->get_venue_label_mode_options() );
+
+			return in_array( $mode, $allowed, true ) ? $mode : 'full_name';
 		}
 
 		/**
@@ -785,6 +824,17 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		}
 
 		/**
+		 * Get configured venue label mode.
+		 *
+		 * @return string
+		 */
+		private function get_venue_label_mode() {
+			$settings = $this->get_settings();
+
+			return $this->sanitize_venue_label_mode( isset( $settings['printable_venue_label_mode'] ) ? $settings['printable_venue_label_mode'] : '' );
+		}
+
+		/**
 		 * Collect event entries for the calendar.
 		 *
 		 * @param int $team_id   Team ID.
@@ -845,12 +895,14 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 					}
 				}
 
-				$venues     = get_the_terms( $event_id, 'sp_venue' );
-				$venue_name = '';
-				$venue_id   = 0;
-				if ( is_array( $venues ) && isset( $venues[0] ) && is_object( $venues[0] ) && isset( $venues[0]->name ) ) {
-					$venue_name = (string) $venues[0]->name;
-					$venue_id   = isset( $venues[0]->term_id ) ? (int) $venues[0]->term_id : 0;
+				$venue        = $this->get_event_venue_term( $event_id );
+				$venue_name   = '';
+				$venue_id     = 0;
+				$venue_label  = '';
+				if ( $venue ) {
+					$venue_name  = (string) $venue->name;
+					$venue_id    = (int) $venue->term_id;
+					$venue_label = $this->get_configured_venue_label( $venue );
 				}
 
 				$entries[] = array(
@@ -863,6 +915,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 					'opponent_name'  => $opponent_id > 0 ? $this->get_team_label( $opponent_id ) : __( 'TBD', 'tonys-sportspress-enhancements' ),
 					'event_time'     => function_exists( 'sp_get_time' ) ? sp_get_time( $event_id ) : get_post_time( get_option( 'time_format' ), false, $event_id, true ),
 					'venue_name'     => $venue_name,
+					'venue_label'    => $venue_label,
 					'venue_id'       => $venue_id,
 					'venue_key'      => $venue_id > 0 ? 'v:' . $venue_id : 'n:' . strtolower( $venue_name ),
 				);
@@ -983,7 +1036,12 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 						}
 						echo '</div>';
 						echo '<span class="ha-flag">' . esc_html( $is_home ? 'H' : 'A' ) . '</span>';
+						echo '<div class="event-meta">';
 						echo '<div class="event-time">' . esc_html( isset( $entry['event_time'] ) ? (string) $entry['event_time'] : '' ) . '</div>';
+						if ( ! empty( $entry['venue_label'] ) ) {
+							echo '<div class="event-venue" title="' . esc_attr( isset( $entry['venue_name'] ) ? (string) $entry['venue_name'] : '' ) . '">' . esc_html( (string) $entry['venue_label'] ) . '</div>';
+						}
+						echo '</div>';
 						echo '</article>';
 					}
 					echo '</div>';
@@ -1021,6 +1079,51 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$title = get_the_title( $team_id );
 
 			return is_string( $title ) && '' !== $title ? $title : __( 'TBD', 'tonys-sportspress-enhancements' );
+		}
+
+		/**
+		 * Get the first event venue term.
+		 *
+		 * @param int $event_id Event ID.
+		 * @return WP_Term|null
+		 */
+		private function get_event_venue_term( $event_id ) {
+			$venues = get_the_terms( $event_id, 'sp_venue' );
+			if ( ! is_array( $venues ) || ! isset( $venues[0] ) || ! is_object( $venues[0] ) || ! isset( $venues[0]->term_id, $venues[0]->name ) ) {
+				return null;
+			}
+
+			return $venues[0];
+		}
+
+		/**
+		 * Get the venue label for the current printable mode.
+		 *
+		 * Falls back to the full venue name when term meta is empty.
+		 *
+		 * @param WP_Term $venue Venue term.
+		 * @return string
+		 */
+		private function get_configured_venue_label( $venue ) {
+			$full_name = isset( $venue->name ) ? trim( (string) $venue->name ) : '';
+			if ( '' === $full_name || ! isset( $venue->term_id ) ) {
+				return '';
+			}
+
+			$term_id = (int) $venue->term_id;
+			$mode    = $this->get_venue_label_mode();
+
+			if ( 'abbreviation' === $mode ) {
+				$abbreviation = trim( (string) get_term_meta( $term_id, 'tse_abbreviation', true ) );
+				return '' !== $abbreviation ? $abbreviation : $full_name;
+			}
+
+			if ( 'short_name' === $mode ) {
+				$short_name = trim( (string) get_term_meta( $term_id, 'tse_short_name', true ) );
+				return '' !== $short_name ? $short_name : $full_name;
+			}
+
+			return $full_name;
 		}
 
 		/**
