@@ -251,8 +251,10 @@ function tse_sp_schedule_exporter_render_admin_page() {
 	echo '<input type="text" class="large-text code tse-output-url" readonly="readonly" value="' . esc_attr( $current_url ) . '" />';
 	echo '<button type="button" class="button tse-copy-link" title="' . esc_attr__( 'Copy URL', 'tonys-sportspress-enhancements' ) . '">' . esc_html__( 'Copy URL', 'tonys-sportspress-enhancements' ) . '</button>';
 	echo '<button type="button" class="button button-primary tse-open-link" data-csv-url="' . esc_url( $csv_url ) . '" data-ics-url="' . esc_url( $ics_url ) . '" data-print-url="' . esc_url( $print_url ) . '" title="' . esc_attr__( 'Open URL in new tab', 'tonys-sportspress-enhancements' ) . '">' . esc_html__( 'Open URL in New Tab', 'tonys-sportspress-enhancements' ) . '</button>';
+	echo '<button type="button" class="button button-primary tse-ics-ios-link" data-ics-url="' . esc_url( $ics_url ) . '" title="' . esc_attr__( 'Subscribe on iPhone or iPad', 'tonys-sportspress-enhancements' ) . '" style="display:none;">' . esc_html__( 'Subscribe on iPhone/iPad', 'tonys-sportspress-enhancements' ) . '</button>';
+	echo '<button type="button" class="button tse-ics-android-link" data-ics-url="' . esc_url( $ics_url ) . '" title="' . esc_attr__( 'Subscribe on Android', 'tonys-sportspress-enhancements' ) . '" style="display:none;">' . esc_html__( 'Subscribe on Android', 'tonys-sportspress-enhancements' ) . '</button>';
 	echo '</div>';
-	echo '<p class="description tse-output-note">' . esc_html__( 'Use the buttons to copy or open the generated URL.', 'tonys-sportspress-enhancements' ) . '</p>';
+	echo '<p class="description tse-output-note">' . esc_html__( 'Use the buttons to copy the generated URL or open the right destination for this export type.', 'tonys-sportspress-enhancements' ) . '</p>';
 	tse_sp_schedule_exporter_render_link_sync_script( true );
 	echo '</div>';
 	echo '</div>';
@@ -372,8 +374,10 @@ function tse_sp_schedule_exporter_render_shortcode() {
 			<input type="text" class="large-text code tse-output-url" readonly="readonly" value="<?php echo esc_attr( $current_url ); ?>" />
 			<button type="button" class="button tse-copy-link" title="<?php esc_attr_e( 'Copy URL', 'tonys-sportspress-enhancements' ); ?>"><?php esc_html_e( 'Copy URL', 'tonys-sportspress-enhancements' ); ?></button>
 			<button type="button" class="button button-primary tse-open-link" data-csv-url="<?php echo esc_url( $csv_url ); ?>" data-ics-url="<?php echo esc_url( $ics_url ); ?>" data-print-url="<?php echo esc_url( $print_url ); ?>" title="<?php esc_attr_e( 'Open URL in new tab', 'tonys-sportspress-enhancements' ); ?>"><?php esc_html_e( 'Open URL in New Tab', 'tonys-sportspress-enhancements' ); ?></button>
+			<button type="button" class="button button-primary tse-ics-ios-link" data-ics-url="<?php echo esc_url( $ics_url ); ?>" title="<?php esc_attr_e( 'Subscribe on iPhone or iPad', 'tonys-sportspress-enhancements' ); ?>" style="display:none;"><?php esc_html_e( 'Subscribe on iPhone/iPad', 'tonys-sportspress-enhancements' ); ?></button>
+			<button type="button" class="button tse-ics-android-link" data-ics-url="<?php echo esc_url( $ics_url ); ?>" title="<?php esc_attr_e( 'Subscribe on Android', 'tonys-sportspress-enhancements' ); ?>" style="display:none;"><?php esc_html_e( 'Subscribe on Android', 'tonys-sportspress-enhancements' ); ?></button>
 		</div>
-		<p class="description tse-output-note"><?php esc_html_e( 'Use the buttons to copy or open the generated URL.', 'tonys-sportspress-enhancements' ); ?></p>
+		<p class="description tse-output-note"><?php esc_html_e( 'Use the buttons to copy the generated URL or open the right destination for this export type.', 'tonys-sportspress-enhancements' ); ?></p>
 	</div>
 	<?php
 	$output = (string) ob_get_clean();
@@ -746,24 +750,6 @@ function tse_sp_schedule_exporter_get_output_url( $export_type, $csv_url, $ics_u
 }
 
 /**
- * Get current output button label for the selected export type.
- *
- * @param string $export_type Export type.
- * @return string
- */
-function tse_sp_schedule_exporter_get_output_label( $export_type ) {
-	if ( 'ics' === $export_type ) {
-		return __( 'Subscribe to iCal / ICS', 'tonys-sportspress-enhancements' );
-	}
-
-	if ( 'printable' === $export_type ) {
-		return __( 'Open Printable Page', 'tonys-sportspress-enhancements' );
-	}
-
-	return __( 'Open CSV Feed', 'tonys-sportspress-enhancements' );
-}
-
-/**
  * Collect team schedule events for export.
  *
  * @param int $team_id   Team ID.
@@ -963,6 +949,8 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 		var field = form.querySelector('[name="field_id"]');
 		var outputUrl = scope.querySelector('.tse-output-url');
 		var openButton = scope.querySelector('.tse-open-link');
+		var iosButton = scope.querySelector('.tse-ics-ios-link');
+		var androidButton = scope.querySelector('.tse-ics-android-link');
 		var outputNote = scope.querySelector('.tse-output-note');
 		var copyButton = scope.querySelector('.tse-copy-link');
 		var teamValue = team ? (team.value || '0') : '0';
@@ -1017,16 +1005,17 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 		}
 
 		var resolvedUrl = csvUrl ? csvUrl.toString() : '';
-		var label = 'Open CSV Feed';
+		var label = 'Open URL in New Tab';
 		var disabled = false;
-		var note = 'Use the buttons to copy or open the generated URL.';
+		var note = 'Use the buttons to copy the generated URL or open the right destination for this export type.';
+		var iosUrl = icsUrl ? icsUrl.toString().replace(/^https?:\/\//, 'webcal://') : '';
+		var androidUrl = icsUrl ? 'https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(icsUrl.toString()) : '';
 
 		if (selectedExportType === 'ics' && icsUrl) {
 			resolvedUrl = icsUrl.toString();
-			label = 'Subscribe to iCal / ICS';
+			note = 'Use the iPhone/iPad or Android button to subscribe, or copy the feed URL.';
 		} else if (selectedExportType === 'printable' && printUrl) {
 			resolvedUrl = printUrl.toString();
-			label = 'Open Printable Page';
 			if (teamValue === '0') {
 				disabled = true;
 				note = 'Printable requires a specific team. All teams is not supported.';
@@ -1043,9 +1032,26 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 		if (openButton) {
 			openButton.dataset.currentUrl = resolvedUrl;
 			openButton.textContent = label;
+			openButton.style.display = selectedExportType === 'ics' ? 'none' : 'inline-flex';
 			openButton.disabled = disabled;
 			openButton.setAttribute('aria-disabled', disabled ? 'true' : 'false');
 			openButton.style.opacity = disabled ? '0.55' : '1';
+		}
+
+		if (iosButton) {
+			iosButton.dataset.currentUrl = iosUrl;
+			iosButton.style.display = selectedExportType === 'ics' ? 'inline-flex' : 'none';
+			iosButton.disabled = !iosUrl;
+			iosButton.setAttribute('aria-disabled', !iosUrl ? 'true' : 'false');
+			iosButton.style.opacity = !iosUrl ? '0.55' : '1';
+		}
+
+		if (androidButton) {
+			androidButton.dataset.currentUrl = androidUrl;
+			androidButton.style.display = selectedExportType === 'ics' ? 'inline-flex' : 'none';
+			androidButton.disabled = !androidUrl;
+			androidButton.setAttribute('aria-disabled', !androidUrl ? 'true' : 'false');
+			androidButton.style.opacity = !androidUrl ? '0.55' : '1';
 		}
 
 		if (outputNote) {
@@ -1083,6 +1089,8 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 
 		var copyButton = scope.querySelector('.tse-copy-link');
 		var openButton = scope.querySelector('.tse-open-link');
+		var iosButton = scope.querySelector('.tse-ics-ios-link');
+		var androidButton = scope.querySelector('.tse-ics-android-link');
 		var outputUrl = scope.querySelector('.tse-output-url');
 		if (copyButton && outputUrl) {
 			copyButton.addEventListener('click', function(){
@@ -1109,6 +1117,28 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 				}
 
 				window.open(outputUrl.value, '_blank', 'noopener,noreferrer');
+			});
+		}
+
+		if (iosButton) {
+			iosButton.addEventListener('click', function(){
+				var targetUrl = iosButton.dataset.currentUrl || '';
+				if (iosButton.disabled || !targetUrl) {
+					return;
+				}
+
+				window.location.href = targetUrl;
+			});
+		}
+
+		if (androidButton) {
+			androidButton.addEventListener('click', function(){
+				var targetUrl = androidButton.dataset.currentUrl || '';
+				if (androidButton.disabled || !targetUrl) {
+					return;
+				}
+
+				window.open(targetUrl, '_blank', 'noopener,noreferrer');
 			});
 		}
 	});
