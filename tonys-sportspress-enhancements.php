@@ -37,4 +37,5 @@ require_once plugin_dir_path(__FILE__) . 'includes/sp-event-admin-week-filter.ph
 require_once plugin_dir_path(__FILE__) . 'includes/sp-event-quick-edit-officials.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-event-team-ordering.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-printable-calendars.php';
+require_once plugin_dir_path(__FILE__) . 'includes/sp-schedule-exporter.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-venue-meta.php';

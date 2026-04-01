@@ -55,7 +55,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 *
 		 * @var string[]
 		 */
-		private $allowed_paper_sizes = array( 'letter', 'ledger' );
+		private $allowed_paper_sizes = array( 'letter', 'ledger', '11x17' );
 
 		/**
 		 * Allowed refresh intervals.
@@ -145,7 +145,9 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$vars[] = self::QUERY_FLAG;
 			$vars[] = 'sp_team';
 			$vars[] = 'sp_season';
+			$vars[] = 'sp_league';
 			$vars[] = 'paper';
+			$vars[] = 'autoprint';
 
 			return $vars;
 		}
@@ -160,7 +162,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			}
 
 			$season_id = absint( (string) get_option( 'sportspress_season', '0' ) );
-			$link      = $this->build_url( $team_id, $season_id, 'letter' );
+			$link      = $this->build_url( $team_id, $season_id, '11x17' );
 
 			echo '<p class="asc-sp-printable-schedule-link">';
 			echo '<a class="button" href="' . esc_url( $link ) . '">';
@@ -407,11 +409,10 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			if ( $season_id <= 0 ) {
 				$season_id = absint( (string) get_option( 'sportspress_season', '0' ) );
 			}
+			$league_id = absint( (string) get_query_var( 'sp_league' ) );
 
-			$paper = strtolower( (string) get_query_var( 'paper' ) );
-			if ( ! in_array( $paper, $this->allowed_paper_sizes, true ) ) {
-				$paper = 'letter';
-			}
+			$paper = $this->normalize_paper_size( (string) get_query_var( 'paper' ) );
+			$autoprint = '1' === (string) get_query_var( 'autoprint' );
 
 			$team_name               = get_the_title( $team_id );
 			$team_logo               = get_the_post_thumbnail( $team_id, array( 72, 72 ), array( 'class' => 'team-logo-img' ) );
@@ -419,7 +420,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$site_url                = home_url( '/' );
 			$qr_url                  = 'https://api.qrserver.com/v1/create-qr-code/?size=144x144&data=' . rawurlencode( $site_url );
 			$season_name             = '';
-			$entries                 = $this->get_schedule_entries( $team_id, $season_id );
+			$entries                 = $this->get_schedule_entries( $team_id, $season_id, $league_id );
 			$team_palette            = $this->get_team_color_palette( $team_id );
 			$team_primary_for_fields = $this->get_strict_team_primary_color( $team_id );
 			$entries_by_day          = array();
@@ -462,6 +463,9 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			echo '<style>';
 			echo '@page{size:' . ( 'ledger' === $paper ? '11in 17in' : 'letter' ) . ';margin:0.45in;}';
 			echo '</style>';
+			if ( $autoprint ) {
+				echo '<script>window.addEventListener("load",function(){window.print();});</script>';
+			}
 			echo '</head>';
 			echo '<body class="print-preview ' . esc_attr( $paper ) . '">';
 
@@ -551,12 +555,15 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 * @param string $paper     Paper size.
 		 * @return string
 		 */
-		private function build_url( $team_id, $season_id, $paper ) {
+		private function build_url( $team_id, $season_id, $paper, $league_id = 0 ) {
+			$paper = $this->normalize_paper_size( $paper );
+
 			return add_query_arg(
 				array(
 					self::QUERY_FLAG => '1',
 					'sp_team'        => (string) absint( $team_id ),
 					'sp_season'      => $season_id > 0 ? (string) absint( $season_id ) : '',
+					'sp_league'      => $league_id > 0 ? (string) absint( $league_id ) : '',
 					'paper'          => (string) $paper,
 				),
 				home_url( '/' )
@@ -585,6 +592,26 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 */
 		private function get_settings() {
 			return wp_parse_args( get_option( self::OPTION_KEY, array() ), $this->default_settings() );
+		}
+
+		/**
+		 * Normalize paper-size input to the internal sheet key.
+		 *
+		 * @param string $paper Raw paper-size value.
+		 * @return string
+		 */
+		private function normalize_paper_size( $paper ) {
+			$paper = strtolower( trim( (string) $paper ) );
+
+			if ( '11x17' === $paper ) {
+				return 'ledger';
+			}
+
+			if ( ! in_array( $paper, $this->allowed_paper_sizes, true ) ) {
+				return 'letter';
+			}
+
+			return $paper;
 		}
 
 		/**
@@ -839,9 +866,10 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 *
 		 * @param int $team_id   Team ID.
 		 * @param int $season_id Season ID.
+		 * @param int $league_id League ID.
 		 * @return array
 		 */
-		private function get_schedule_entries( $team_id, $season_id ) {
+		private function get_schedule_entries( $team_id, $season_id, $league_id = 0 ) {
 			$args = array(
 				'post_type'      => 'sp_event',
 				'post_status'    => array( 'publish', 'future' ),
@@ -858,14 +886,30 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				),
 			);
 
+			$tax_query = array();
+
 			if ( $season_id > 0 ) {
-				$args['tax_query'] = array(
-					array(
-						'taxonomy' => 'sp_season',
-						'field'    => 'term_id',
-						'terms'    => array( $season_id ),
-					),
+				$tax_query[] = array(
+					'taxonomy' => 'sp_season',
+					'field'    => 'term_id',
+					'terms'    => array( $season_id ),
 				);
+			}
+
+			if ( $league_id > 0 ) {
+				$tax_query[] = array(
+					'taxonomy' => 'sp_league',
+					'field'    => 'term_id',
+					'terms'    => array( $league_id ),
+				);
+			}
+
+			if ( ! empty( $tax_query ) ) {
+				if ( count( $tax_query ) > 1 ) {
+					$tax_query['relation'] = 'AND';
+				}
+
+				$args['tax_query'] = $tax_query;
 			}
 
 			$query   = new WP_Query( $args );
