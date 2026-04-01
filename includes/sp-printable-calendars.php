@@ -244,6 +244,73 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			}
 
 			$current_tab          = $this->current_settings_tab();
+
+			echo '<div class="wrap">';
+			echo '<h1>' . esc_html__( 'Tony\'s Settings', 'tonys-sportspress-enhancements' ) . '</h1>';
+			$this->render_settings_tabs( $current_tab );
+
+			if ( self::TAB_PRINTABLE === $current_tab ) {
+				$this->render_printable_settings_tab( $current_tab );
+			} else {
+				do_action( 'tse_tonys_settings_render_tab_' . $current_tab );
+			}
+
+			echo '</div>';
+		}
+
+		/**
+		 * Render Tony's settings tabs.
+		 *
+		 * @param string $current_tab Current tab key.
+		 */
+		private function render_settings_tabs( $current_tab ) {
+			$tabs = apply_filters(
+				'tse_tonys_settings_tabs',
+				array(
+				self::TAB_PRINTABLE => __( 'Printable Calendars', 'tonys-sportspress-enhancements' ),
+				)
+			);
+
+			echo '<nav class="nav-tab-wrapper" style="margin-bottom:20px;">';
+			foreach ( $tabs as $tab => $label ) {
+				$url = add_query_arg(
+					array(
+						'page' => self::PAGE_SLUG,
+						'tab'  => $tab,
+					),
+					admin_url( 'admin.php' )
+				);
+
+				$class = $tab === $current_tab ? ' nav-tab-active' : '';
+				echo '<a class="nav-tab' . esc_attr( $class ) . '" href="' . esc_url( $url ) . '">' . esc_html( $label ) . '</a>';
+			}
+			echo '</nav>';
+		}
+
+		/**
+		 * Resolve the current settings tab.
+		 *
+		 * @return string
+		 */
+		private function current_settings_tab() {
+			$tab  = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : self::TAB_PRINTABLE;
+			$tabs = apply_filters(
+				'tse_tonys_settings_tabs',
+				array(
+					self::TAB_PRINTABLE => __( 'Printable Calendars', 'tonys-sportspress-enhancements' ),
+				)
+			);
+
+			return isset( $tabs[ $tab ] ) ? $tab : self::TAB_PRINTABLE;
+		}
+
+		/**
+		 * Render printable settings tab content.
+		 *
+		 * @param string $current_tab Current tab key.
+		 * @return void
+		 */
+		private function render_printable_settings_tab( $current_tab ) {
 			$season_id            = $this->selected_season_id();
 			$seasons              = $this->get_seasons();
 			$venues               = $this->get_venues_for_season( $season_id );
@@ -253,9 +320,6 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$season_overrides     = isset( $overrides[ $season_key ] ) && is_array( $overrides[ $season_key ] ) ? $overrides[ $season_key ] : array();
 			$season_primary_flags = isset( $primary_flags[ $season_key ] ) && is_array( $primary_flags[ $season_key ] ) ? $primary_flags[ $season_key ] : array();
 
-			echo '<div class="wrap">';
-			echo '<h1>' . esc_html__( 'Tony\'s Settings', 'tonys-sportspress-enhancements' ) . '</h1>';
-			$this->render_settings_tabs( $current_tab );
 			echo '<form method="post" action="options.php">';
 			settings_fields( self::OPTION_GROUP );
 
@@ -325,15 +389,15 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 
 				$palette_count = count( $this->suggested_palette );
 				foreach ( $venues as $index => $venue ) {
-					$venue_id    = (int) $venue['id'];
-					$venue_name  = isset( $venue['name'] ) ? (string) $venue['name'] : '';
-					$saved       = isset( $season_overrides[ (string) $venue_id ] ) && is_string( $season_overrides[ (string) $venue_id ] ) ? $season_overrides[ (string) $venue_id ] : '';
-					$suggested   = $this->suggested_palette[ $index % max( 1, $palette_count ) ];
-					$value       = '' !== $saved ? $saved : $suggested;
-					$adjusted    = $this->adjust_for_white_text( $value, self::MIN_WHITE_CONTRAST );
-					$name        = self::OPTION_KEY . '[venue_color_overrides][' . $season_key . '][' . $venue_id . ']';
+					$venue_id     = (int) $venue['id'];
+					$venue_name   = isset( $venue['name'] ) ? (string) $venue['name'] : '';
+					$saved        = isset( $season_overrides[ (string) $venue_id ] ) && is_string( $season_overrides[ (string) $venue_id ] ) ? $season_overrides[ (string) $venue_id ] : '';
+					$suggested    = $this->suggested_palette[ $index % max( 1, $palette_count ) ];
+					$value        = '' !== $saved ? $saved : $suggested;
+					$adjusted     = $this->adjust_for_white_text( $value, self::MIN_WHITE_CONTRAST );
+					$name         = self::OPTION_KEY . '[venue_color_overrides][' . $season_key . '][' . $venue_id . ']';
 					$primary_name = self::OPTION_KEY . '[venue_use_team_primary][' . $season_key . '][' . $venue_id . ']';
-					$use_primary = isset( $season_primary_flags[ (string) $venue_id ] ) && '1' === $season_primary_flags[ (string) $venue_id ];
+					$use_primary  = isset( $season_primary_flags[ (string) $venue_id ] ) && '1' === $season_primary_flags[ (string) $venue_id ];
 
 					echo '<tr>';
 					echo '<td>' . esc_html( $venue_name ) . '</td>';
@@ -349,45 +413,202 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 
 			submit_button( __( 'Save Settings', 'tonys-sportspress-enhancements' ) );
 			echo '</form>';
-			echo '</div>';
+
+			$this->render_printable_url_builder( $season_id );
 		}
 
 		/**
-		 * Render Tony's settings tabs.
+		 * Render printable calendar URL builder.
 		 *
-		 * @param string $current_tab Current tab key.
+		 * @param int $season_id Current season context.
+		 * @return void
 		 */
-		private function render_settings_tabs( $current_tab ) {
-			$tabs = array(
-				self::TAB_PRINTABLE => __( 'Printable Calendars', 'tonys-sportspress-enhancements' ),
-			);
+		private function render_printable_url_builder( $season_id ) {
+			$leagues = function_exists( 'tse_sp_schedule_exporter_get_leagues' ) ? tse_sp_schedule_exporter_get_leagues() : array();
+			$teams   = function_exists( 'tse_sp_schedule_exporter_get_teams' ) ? tse_sp_schedule_exporter_get_teams() : array();
+			$paper   = '11x17';
 
-			echo '<nav class="nav-tab-wrapper" style="margin-bottom:20px;">';
-			foreach ( $tabs as $tab => $label ) {
-				$url = add_query_arg(
-					array(
-						'page' => self::PAGE_SLUG,
-						'tab'  => $tab,
-					),
-					admin_url( 'admin.php' )
-				);
+			echo '<div class="tse-printable-url-builder" style="max-width:1100px;margin-top:28px;padding:20px 24px;border:1px solid #dcdcde;background:#fff;">';
+			echo '<h2 style="margin-top:0;">' . esc_html__( 'Printable Calendar URL Builder', 'tonys-sportspress-enhancements' ) . '</h2>';
+			echo '<p>' . esc_html__( 'Build a shareable printable calendar URL with team, season, league, paper size, and optional auto-print.', 'tonys-sportspress-enhancements' ) . '</p>';
 
-				$class = self::TAB_PRINTABLE === $tab && self::TAB_PRINTABLE === $current_tab ? ' nav-tab-active' : '';
-				echo '<a class="nav-tab' . esc_attr( $class ) . '" href="' . esc_url( $url ) . '">' . esc_html( $label ) . '</a>';
+			echo '<table class="form-table" role="presentation"><tbody>';
+
+			echo '<tr><th scope="row"><label for="tse-printable-builder-team">' . esc_html__( 'Team', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
+			echo '<select id="tse-printable-builder-team" style="min-width:280px;">';
+			echo '<option value="0">' . esc_html__( 'Choose a team', 'tonys-sportspress-enhancements' ) . '</option>';
+			foreach ( $teams as $team ) {
+				if ( ! $team instanceof WP_Post ) {
+					continue;
+				}
+				echo '<option value="' . esc_attr( (string) $team->ID ) . '">' . esc_html( $team->post_title ) . '</option>';
 			}
-			echo '</nav>';
+			echo '</select>';
+			echo '</td></tr>';
+
+			echo '<tr><th scope="row"><label for="tse-printable-builder-season">' . esc_html__( 'Season', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
+			echo '<select id="tse-printable-builder-season" style="min-width:280px;">';
+			echo '<option value="0">' . esc_html__( 'Current season', 'tonys-sportspress-enhancements' ) . '</option>';
+			foreach ( $this->get_seasons() as $season ) {
+				if ( ! $season instanceof WP_Term ) {
+					continue;
+				}
+				echo '<option value="' . esc_attr( (string) $season->term_id ) . '" ' . selected( $season_id, (int) $season->term_id, false ) . '>' . esc_html( $season->name ) . '</option>';
+			}
+			echo '</select>';
+			echo '</td></tr>';
+
+			echo '<tr><th scope="row"><label for="tse-printable-builder-league">' . esc_html__( 'League', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
+			echo '<select id="tse-printable-builder-league" style="min-width:280px;">';
+			echo '<option value="0">' . esc_html__( 'Any league', 'tonys-sportspress-enhancements' ) . '</option>';
+			foreach ( $leagues as $league ) {
+				if ( ! $league instanceof WP_Term ) {
+					continue;
+				}
+				echo '<option value="' . esc_attr( (string) $league->term_id ) . '">' . esc_html( $league->name ) . '</option>';
+			}
+			echo '</select>';
+			echo '</td></tr>';
+
+			echo '<tr><th scope="row"><label for="tse-printable-builder-paper">' . esc_html__( 'Paper Size', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
+			echo '<select id="tse-printable-builder-paper" style="min-width:280px;">';
+			foreach ( array( 'letter' => __( 'Letter', 'tonys-sportspress-enhancements' ), '11x17' => __( '11x17 / Ledger', 'tonys-sportspress-enhancements' ) ) as $paper_value => $paper_label ) {
+				echo '<option value="' . esc_attr( $paper_value ) . '" ' . selected( $paper, $paper_value, false ) . '>' . esc_html( $paper_label ) . '</option>';
+			}
+			echo '</select>';
+			echo '</td></tr>';
+
+			echo '<tr><th scope="row">' . esc_html__( 'Options', 'tonys-sportspress-enhancements' ) . '</th><td>';
+			echo '<label for="tse-printable-builder-autoprint" style="display:inline-flex;align-items:center;gap:6px;">';
+			echo '<input id="tse-printable-builder-autoprint" type="checkbox" value="1" />';
+			echo esc_html__( 'Auto-open print dialog', 'tonys-sportspress-enhancements' );
+			echo '</label>';
+			echo '</td></tr>';
+
+			echo '</tbody></table>';
+
+			echo '<h3 style="margin-top:24px;">' . esc_html__( 'Generated URL', 'tonys-sportspress-enhancements' ) . '</h3>';
+			echo '<div style="display:flex;align-items:center;gap:8px;max-width:100%;">';
+			echo '<input type="text" id="tse-printable-builder-output" class="large-text code" readonly="readonly" />';
+			echo '<button type="button" id="tse-printable-builder-copy" class="button" aria-label="' . esc_attr__( 'Copy URL', 'tonys-sportspress-enhancements' ) . '" title="' . esc_attr__( 'Copy URL', 'tonys-sportspress-enhancements' ) . '" style="display:inline-flex;align-items:center;justify-content:center;min-width:40px;padding:0 10px;">';
+			echo '<span aria-hidden="true" style="font-size:16px;line-height:1;">⧉</span>';
+			echo '</button>';
+			echo '</div>';
+			echo '<p><a id="tse-printable-builder-open" class="button button-primary" href="' . esc_url( home_url( '/' ) ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Open Printable URL', 'tonys-sportspress-enhancements' ) . '</a></p>';
+			echo '<p class="description">' . esc_html__( 'The printable route requires a single team selection.', 'tonys-sportspress-enhancements' ) . '</p>';
+			echo '</div>';
+
+			$this->render_printable_url_builder_script();
 		}
 
 		/**
-		 * Resolve the current settings tab.
+		 * Render printable URL builder script.
 		 *
-		 * @return string
+		 * @return void
 		 */
-		private function current_settings_tab() {
-			$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : self::TAB_PRINTABLE;
+		private function render_printable_url_builder_script() {
+			$base_url = home_url( '/' );
+			$query_flag = self::QUERY_FLAG;
+			?>
+			<script>
+			(function(){
+				var root = document.querySelector('.tse-printable-url-builder');
+				if (!root) {
+					return;
+				}
 
-			return self::TAB_PRINTABLE === $tab ? $tab : self::TAB_PRINTABLE;
+				var baseUrl = <?php echo wp_json_encode( $base_url ); ?>;
+				var queryFlag = <?php echo wp_json_encode( $query_flag ); ?>;
+				var team = root.querySelector('#tse-printable-builder-team');
+				var season = root.querySelector('#tse-printable-builder-season');
+				var league = root.querySelector('#tse-printable-builder-league');
+				var paper = root.querySelector('#tse-printable-builder-paper');
+				var autoprint = root.querySelector('#tse-printable-builder-autoprint');
+				var output = root.querySelector('#tse-printable-builder-output');
+				var copyButton = root.querySelector('#tse-printable-builder-copy');
+				var openLink = root.querySelector('#tse-printable-builder-open');
+
+				function buildUrl() {
+					var url = new URL(baseUrl, window.location.origin);
+					url.searchParams.set(queryFlag, '1');
+
+					if (team.value && team.value !== '0') {
+						url.searchParams.set('sp_team', team.value);
+					} else {
+						url.searchParams.delete('sp_team');
+					}
+
+					if (season.value && season.value !== '0') {
+						url.searchParams.set('sp_season', season.value);
+					} else {
+						url.searchParams.delete('sp_season');
+					}
+
+					if (league.value && league.value !== '0') {
+						url.searchParams.set('sp_league', league.value);
+					} else {
+						url.searchParams.delete('sp_league');
+					}
+
+					if (paper.value) {
+						url.searchParams.set('paper', paper.value);
+					}
+
+					if (autoprint.checked) {
+						url.searchParams.set('autoprint', '1');
+					} else {
+						url.searchParams.delete('autoprint');
+					}
+
+					output.value = url.toString();
+					openLink.href = url.toString();
+					openLink.toggleAttribute('disabled', !(team.value && team.value !== '0'));
+				}
+
+				[team, season, league, paper, autoprint].forEach(function(input){
+					input.addEventListener('change', buildUrl);
+				});
+
+				if (copyButton) {
+					copyButton.addEventListener('click', function(){
+						var value = output.value || '';
+						if (!value) {
+							return;
+						}
+
+						var defaultTitle = copyButton.getAttribute('data-default-title') || copyButton.title || 'Copy URL';
+						copyButton.setAttribute('data-default-title', defaultTitle);
+
+						function markCopied() {
+							copyButton.title = 'Copied';
+							window.setTimeout(function(){
+								copyButton.title = defaultTitle;
+							}, 1200);
+						}
+
+						if (navigator.clipboard && navigator.clipboard.writeText) {
+							navigator.clipboard.writeText(value).then(markCopied).catch(function(){
+								output.focus();
+								output.select();
+								document.execCommand('copy');
+								markCopied();
+							});
+							return;
+						}
+
+						output.focus();
+						output.select();
+						document.execCommand('copy');
+						markCopied();
+					});
+				}
+
+				buildUrl();
+			})();
+			</script>
+			<?php
 		}
+
 
 		/**
 		 * Render the printable page when the flag is present.
