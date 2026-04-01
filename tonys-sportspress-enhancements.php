@@ -7,13 +7,13 @@
  * Author URI:      https://github.com/anthonyscorrea/
  * Text Domain:     tonys-sportspress-enhancements
  * Domain Path:     /languages
- * Version:         0.1.6
+ * Version:         0.1.7
  *
  * @package         Tonys_Sportspress_Enhancements
  */
 
 if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION' ) ) {
-	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION', '0.1.6' );
+	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION', '0.1.7' );
 }
 
 if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_FILE' ) ) {
