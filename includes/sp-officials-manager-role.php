@@ -320,10 +320,59 @@ function tony_sportspress_limit_event_admin_ui_for_officials_manager() {
 		.post-type-sp_event .wrap .bulkactions {
 			display: none;
 		}
+
+		.post-type-sp_event .wp-list-table .column-title .row-title {
+			color: inherit;
+			cursor: default;
+			text-decoration: none;
+		}
 	</style>
+	<script>
+	(function() {
+		const replaceTitleLinks = function() {
+			document.querySelectorAll('.post-type-sp_event .wp-list-table .column-title a.row-title').forEach(function(link) {
+				const text = document.createTextNode(link.textContent || '');
+				const span = document.createElement('span');
+
+				span.className = link.className;
+				span.appendChild(text);
+				link.replaceWith(span);
+			});
+		};
+
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', replaceTitleLinks);
+		} else {
+			replaceTitleLinks();
+		}
+	})();
+	</script>
 	<?php
 }
 add_action( 'admin_head', 'tony_sportspress_limit_event_admin_ui_for_officials_manager' );
+
+/**
+ * Prevent clickable edit links to events for assignment-only users.
+ *
+ * This keeps the list-table title as plain text while preserving Quick Edit.
+ *
+ * @param string|false $link    Edit link.
+ * @param int          $post_id Post ID.
+ * @param string       $context Link context.
+ * @return string|false
+ */
+function tony_sportspress_disable_event_edit_links_for_officials_manager( $link, $post_id, $context ) {
+	if ( ! is_admin() || ! tony_sportspress_is_officials_manager_user() ) {
+		return $link;
+	}
+
+	if ( 'sp_event' !== get_post_type( $post_id ) ) {
+		return $link;
+	}
+
+	return false;
+}
+add_filter( 'get_edit_post_link', 'tony_sportspress_disable_event_edit_links_for_officials_manager', 10, 3 );
 
 /**
  * Preserve core event fields so assignment-only users cannot alter them via Quick Edit.
