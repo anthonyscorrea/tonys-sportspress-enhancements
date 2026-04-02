@@ -7,6 +7,7 @@
  * Author URI:      https://github.com/anthonyscorrea/
  * Text Domain:     tonys-sportspress-enhancements
  * Domain Path:     /languages
+ * Update URI:      https://github.com/anthonyscorrea/tonys-sportspress-enhancements
  * Version:         0.1.7
  *
  * @package         Tonys_Sportspress_Enhancements
@@ -28,7 +29,12 @@ if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_URL' ) ) {
 	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_URL', plugin_dir_url( __FILE__ ) );
 }
 
+if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_PLUGIN_BASENAME' ) ) {
+	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
+}
+
 // Include other files here
+require_once plugin_dir_path(__FILE__) . 'includes/sp-github-updater.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-officials-manager-role.php';
 require_once plugin_dir_path(__FILE__) . 'includes/open-graph-tags.php';
 require_once plugin_dir_path(__FILE__) . 'includes/featured-image-generator.php';
