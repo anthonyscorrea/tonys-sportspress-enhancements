@@ -197,7 +197,21 @@ function tony_sportspress_parse_admin_week_filter() {
 		return null;
 	}
 
-	$raw = sanitize_text_field( wp_unslash( $_GET['sp_week_filter'] ) );
+	$raw      = sanitize_text_field( wp_unslash( $_GET['sp_week_filter'] ) );
+	$timezone = wp_timezone();
+
+	if ( 'this-week' === $raw || 'next-week' === $raw ) {
+		$base = new DateTimeImmutable( 'now', $timezone );
+		if ( 'next-week' === $raw ) {
+			$base = $base->modify( '+1 week' );
+		}
+
+		return array(
+			'year' => (int) $base->format( 'o' ),
+			'week' => (int) $base->format( 'W' ),
+		);
+	}
+
 	if ( ! preg_match( '/^(\d{4})-W(0[1-9]|[1-4][0-9]|5[0-3])$/', $raw, $matches ) ) {
 		return null;
 	}
@@ -298,6 +312,8 @@ function tony_sportspress_render_admin_week_filter( $post_type ) {
 		title="<?php esc_attr_e( 'Week (Monday start)', 'tonys-sportspress-enhancements' ); ?>"
 	>
 		<option value=""><?php esc_html_e( 'Year/Week', 'tonys-sportspress-enhancements' ); ?></option>
+		<option value="this-week" <?php selected( $value, 'this-week' ); ?>><?php esc_html_e( 'This week', 'tonys-sportspress-enhancements' ); ?></option>
+		<option value="next-week" <?php selected( $value, 'next-week' ); ?>><?php esc_html_e( 'Next week', 'tonys-sportspress-enhancements' ); ?></option>
 		<?php foreach ( $options as $option ) : ?>
 			<option value="<?php echo esc_attr( $option['value'] ); ?>" <?php selected( $value, $option['value'] ); ?>>
 				<?php echo esc_html( $option['label'] ); ?>
