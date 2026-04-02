@@ -29,6 +29,7 @@ if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_URL' ) ) {
 }
 
 // Include other files here
+require_once plugin_dir_path(__FILE__) . 'includes/sp-officials-manager-role.php';
 require_once plugin_dir_path(__FILE__) . 'includes/open-graph-tags.php';
 require_once plugin_dir_path(__FILE__) . 'includes/featured-image-generator.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-event-permalink.php';
@@ -41,3 +42,5 @@ require_once plugin_dir_path(__FILE__) . 'includes/sp-printable-calendars.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-url-builder.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-schedule-exporter.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-venue-meta.php';
+
+register_activation_hook( __FILE__, 'tony_sportspress_sync_officials_manager_roles' );

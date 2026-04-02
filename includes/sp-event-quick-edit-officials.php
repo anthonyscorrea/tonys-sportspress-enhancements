@@ -8,13 +8,96 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Add an Officials column to the event admin list.
+ *
+ * @param array $columns Existing columns.
+ * @return array
+ */
+function tony_sportspress_event_add_officials_column( $columns ) {
+	$updated = array();
+
+	foreach ( $columns as $key => $label ) {
+		$updated[ $key ] = $label;
+
+		if ( 'sp_team' === $key ) {
+			$updated['tony_sp_officials'] = esc_html__( 'Officials', 'tonys-sportspress-enhancements' );
+		}
+	}
+
+	if ( ! isset( $updated['tony_sp_officials'] ) ) {
+		$updated['tony_sp_officials'] = esc_html__( 'Officials', 'tonys-sportspress-enhancements' );
+	}
+
+	return $updated;
+}
+add_filter( 'manage_edit-sp_event_columns', 'tony_sportspress_event_add_officials_column', 20 );
+
+/**
+ * Build a display-ready officials map for an event.
+ *
+ * @param int $post_id Post ID.
+ * @return array<int, array{name: string, officials: string[]}>
+ */
+function tony_sportspress_event_get_officials_display( $post_id ) {
+	$officials_by_duty = get_post_meta( $post_id, 'sp_officials', true );
+	if ( ! is_array( $officials_by_duty ) || empty( $officials_by_duty ) ) {
+		return array();
+	}
+
+	$duties = get_terms(
+		array(
+			'taxonomy'   => 'sp_duty',
+			'hide_empty' => false,
+		)
+	);
+
+	$duty_names = array();
+	if ( is_array( $duties ) ) {
+		foreach ( $duties as $duty ) {
+			if ( isset( $duty->term_id, $duty->name ) ) {
+				$duty_names[ (int) $duty->term_id ] = $duty->name;
+			}
+		}
+	}
+
+	$rows = array();
+	foreach ( $officials_by_duty as $duty_id => $official_ids ) {
+		$duty_id      = absint( $duty_id );
+		$official_ids = array_filter( array_map( 'absint', (array) $official_ids ) );
+
+		if ( $duty_id <= 0 || empty( $official_ids ) ) {
+			continue;
+		}
+
+		$names = array();
+		foreach ( $official_ids as $official_id ) {
+			$title = get_the_title( $official_id );
+			if ( is_string( $title ) && '' !== $title ) {
+				$names[] = $title;
+			}
+		}
+
+		if ( empty( $names ) ) {
+			continue;
+		}
+
+		$rows[] = array(
+			'name'      => isset( $duty_names[ $duty_id ] ) ? $duty_names[ $duty_id ] : (string) $duty_id,
+			'officials' => $names,
+		);
+	}
+
+	return $rows;
+}
+
+/**
  * Print hidden officials data on each event row for quick edit prefill.
  *
  * @param string $column  Column key.
  * @param int    $post_id Post ID.
  */
 function tony_sportspress_event_quick_edit_officials_row_data( $column, $post_id ) {
-	if ( 'sp_team' !== $column ) {
+	if ( 'tony_sp_officials' !== $column ) {
 		return;
 	}
 
@@ -28,6 +111,18 @@ function tony_sportspress_event_quick_edit_officials_row_data( $column, $post_id
 		$serialized = '{}';
 	}
 
+	$rows = tony_sportspress_event_get_officials_display( $post_id );
+	if ( empty( $rows ) ) {
+		echo '&mdash;';
+	} else {
+		foreach ( $rows as $row ) {
+			echo '<div class="tony-sp-event-official-row">';
+			echo '<strong>' . esc_html( $row['name'] ) . ':</strong> ';
+			echo esc_html( implode( ', ', $row['officials'] ) );
+			echo '</div>';
+		}
+	}
+
 	echo '<span class="hidden tony-event-officials-data" data-officials="' . esc_attr( $serialized ) . '"></span>';
 }
 add_action( 'manage_sp_event_posts_custom_column', 'tony_sportspress_event_quick_edit_officials_row_data', 20, 2 );
@@ -39,7 +134,7 @@ add_action( 'manage_sp_event_posts_custom_column', 'tony_sportspress_event_quick
  * @param string $post_type   Post type key.
  */
 function tony_sportspress_event_quick_edit_officials_field( $column_name, $post_type ) {
-	if ( 'sp_event' !== $post_type || 'sp_team' !== $column_name ) {
+	if ( 'sp_event' !== $post_type || 'tony_sp_officials' !== $column_name ) {
 		return;
 	}
 
