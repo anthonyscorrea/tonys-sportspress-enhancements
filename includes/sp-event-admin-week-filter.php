@@ -38,6 +38,36 @@ function tony_sportspress_event_filter_meta_key( $key ) {
 }
 
 /**
+ * Get the current singular label for event venues.
+ *
+ * @return string
+ */
+function tony_sportspress_get_event_venue_label() {
+	$taxonomy = get_taxonomy( 'sp_venue' );
+
+	if ( $taxonomy && ! empty( $taxonomy->labels->singular_name ) ) {
+		return (string) $taxonomy->labels->singular_name;
+	}
+
+	return __( 'Venue', 'sportspress' );
+}
+
+/**
+ * Get the current plural label for event venues.
+ *
+ * @return string
+ */
+function tony_sportspress_get_event_venue_label_plural() {
+	$taxonomy = get_taxonomy( 'sp_venue' );
+
+	if ( $taxonomy && ! empty( $taxonomy->labels->name ) ) {
+		return (string) $taxonomy->labels->name;
+	}
+
+	return __( 'Venues', 'sportspress' );
+}
+
+/**
  * Normalize event filter visibility rules.
  *
  * Month/Year and Week are mutually exclusive.
@@ -131,9 +161,9 @@ function tony_sportspress_event_filter_screen_options_markup( $settings, $screen
 
 	$labels = array(
 		'month'     => __( 'Month/Year', 'tonys-sportspress-enhancements' ),
-		'week'      => __( 'Week', 'tonys-sportspress-enhancements' ),
+		'week'      => __( 'Year/Week', 'tonys-sportspress-enhancements' ),
 		'team'      => __( 'Team', 'tonys-sportspress-enhancements' ),
-		'venue'     => __( 'Venue', 'tonys-sportspress-enhancements' ),
+		'venue'     => tony_sportspress_get_event_venue_label(),
 		'league'    => __( 'League', 'tonys-sportspress-enhancements' ),
 		'season'    => __( 'Season', 'tonys-sportspress-enhancements' ),
 		'match_day' => __( 'Match Day', 'tonys-sportspress-enhancements' ),
@@ -267,7 +297,7 @@ function tony_sportspress_render_admin_week_filter( $post_type ) {
 		class="sp-week-filter-field"
 		title="<?php esc_attr_e( 'Week (Monday start)', 'tonys-sportspress-enhancements' ); ?>"
 	>
-		<option value=""><?php esc_html_e( 'Week', 'tonys-sportspress-enhancements' ); ?></option>
+		<option value=""><?php esc_html_e( 'Year/Week', 'tonys-sportspress-enhancements' ); ?></option>
 		<?php foreach ( $options as $option ) : ?>
 			<option value="<?php echo esc_attr( $option['value'] ); ?>" <?php selected( $value, $option['value'] ); ?>>
 				<?php echo esc_html( $option['label'] ); ?>
@@ -354,6 +384,12 @@ function tony_sportspress_admin_week_filter_script() {
 	if ( ! $screen || 'edit-sp_event' !== $screen->id ) {
 		return;
 	}
+
+	$venue_filter_text = sprintf(
+		/* translators: %s: plural venue label. */
+		__( 'Show all %s', 'sportspress' ),
+		strtolower( tony_sportspress_get_event_venue_label_plural() )
+	);
 	?>
 	<script>
 	(function() {
@@ -414,6 +450,14 @@ function tony_sportspress_admin_week_filter_script() {
 			const allDates = monthSelect.querySelector('option[value="0"]');
 			if (allDates) {
 				allDates.textContent = <?php echo wp_json_encode( __( 'Month/Year', 'tonys-sportspress-enhancements' ) ); ?>;
+			}
+		}
+
+		const venueSelect = document.querySelector('select[name="sp_venue"]');
+		if (venueSelect) {
+			const allVenues = venueSelect.querySelector('option[value="0"]');
+			if (allVenues) {
+				allVenues.textContent = <?php echo wp_json_encode( $venue_filter_text ); ?>;
 			}
 		}
 	})();
