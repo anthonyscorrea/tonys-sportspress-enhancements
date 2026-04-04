@@ -53,6 +53,7 @@ function tse_sp_event_export_get_column_definitions() {
 			'away_team'           => __( 'Away Team', 'tonys-sportspress-enhancements' ),
 			'home_team'           => __( 'Home Team', 'tonys-sportspress-enhancements' ),
 			'field_name'          => __( 'Field Name', 'tonys-sportspress-enhancements' ),
+			'field_address'       => __( 'Field Address', 'tonys-sportspress-enhancements' ),
 			'officials'           => __( 'Officials', 'tonys-sportspress-enhancements' ),
 		),
 		'team'    => array(
@@ -65,6 +66,7 @@ function tse_sp_event_export_get_column_definitions() {
 			'opponent_name'       => __( 'Opponent', 'tonys-sportspress-enhancements' ),
 			'location_flag'       => __( 'Home/Away', 'tonys-sportspress-enhancements' ),
 			'field_name'          => __( 'Field Name', 'tonys-sportspress-enhancements' ),
+			'field_address'       => __( 'Field Address', 'tonys-sportspress-enhancements' ),
 			'field_abbreviation'  => __( 'Field Abbreviation', 'tonys-sportspress-enhancements' ),
 			'field_short_name'    => __( 'Field Short Name', 'tonys-sportspress-enhancements' ),
 			'officials'           => __( 'Officials', 'tonys-sportspress-enhancements' ),
@@ -332,6 +334,7 @@ function tse_sp_event_export_get_events( $filters ) {
 			'home_team'           => $home_id > 0 ? get_the_title( $home_id ) : '',
 			'away_team'           => $away_id > 0 ? get_the_title( $away_id ) : '',
 			'field_name'          => isset( $venue['name'] ) ? $venue['name'] : '',
+			'field_address'       => isset( $venue['address'] ) ? $venue['address'] : '',
 			'field_abbreviation'  => isset( $venue['abbreviation'] ) ? $venue['abbreviation'] : '',
 			'field_short_name'    => isset( $venue['short_name'] ) ? $venue['short_name'] : '',
 			'season'              => tse_sp_event_export_get_event_term_names( $event_id, 'sp_season' ),
@@ -380,15 +383,18 @@ function tse_sp_event_export_get_primary_field( $event_id ) {
 	if ( ! is_array( $venues ) || ! isset( $venues[0] ) || ! $venues[0] instanceof WP_Term ) {
 		return array(
 			'name'         => '',
+			'address'      => '',
 			'abbreviation' => '',
 			'short_name'   => '',
 		);
 	}
 
 	$venue = $venues[0];
+	$meta  = get_option( 'taxonomy_' . $venue->term_id );
 
 	return array(
 		'name'         => isset( $venue->name ) ? (string) $venue->name : '',
+		'address'      => is_array( $meta ) && isset( $meta['sp_address'] ) ? trim( (string) $meta['sp_address'] ) : '',
 		'abbreviation' => trim( (string) get_term_meta( $venue->term_id, 'tse_abbreviation', true ) ),
 		'short_name'   => trim( (string) get_term_meta( $venue->term_id, 'tse_short_name', true ) ),
 	);

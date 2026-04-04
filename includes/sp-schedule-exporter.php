@@ -1,6 +1,6 @@
 <?php
 /**
- * SportsPress schedule exporter admin page.
+ * SportsPress schedule exporter frontend and shared helpers.
  *
  * @package Tonys_Sportspress_Enhancements
  */
@@ -9,22 +9,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Register the schedule exporter admin page.
- *
- * @return void
- */
-function tse_sp_schedule_exporter_add_admin_page() {
-	add_submenu_page(
-		'sportspress',
-		__( 'Schedule Exporter', 'tonys-sportspress-enhancements' ),
-		__( 'Schedule Exporter', 'tonys-sportspress-enhancements' ),
-		'manage_sportspress',
-		'tse-schedule-exporter',
-		'tse_sp_schedule_exporter_render_admin_page'
-	);
-}
-add_action( 'admin_menu', 'tse_sp_schedule_exporter_add_admin_page' );
 add_shortcode( 'tse_schedule_exporter', 'tse_sp_schedule_exporter_render_shortcode' );
 add_action( 'init', 'tse_sp_schedule_exporter_register_block' );
 
@@ -89,175 +73,6 @@ function tse_sp_schedule_exporter_register_block() {
 			),
 		)
 	);
-}
-
-/**
- * Render the schedule exporter page.
- *
- * @return void
- */
-function tse_sp_schedule_exporter_render_admin_page() {
-	if ( ! current_user_can( 'manage_sportspress' ) ) {
-		return;
-	}
-
-	$leagues   = tse_sp_schedule_exporter_get_leagues();
-	$league_id = tse_sp_schedule_exporter_resolve_league_id( $leagues );
-	$seasons   = tse_sp_schedule_exporter_get_seasons();
-	$season_id = tse_sp_schedule_exporter_resolve_season_id( $seasons );
-	$teams     = tse_sp_schedule_exporter_get_teams( $league_id, $season_id );
-	$team_id   = tse_sp_schedule_exporter_resolve_team_id( $teams );
-	$fields    = tse_sp_schedule_exporter_get_fields();
-	$field_id  = tse_sp_schedule_exporter_resolve_field_id( $fields );
-	$export_type = tse_sp_schedule_exporter_resolve_export_type();
-	$subformat   = tse_sp_schedule_exporter_resolve_subformat();
-
-	echo '<div class="wrap">';
-	echo '<h1>' . esc_html__( 'Schedule Exporter', 'tonys-sportspress-enhancements' ) . '</h1>';
-	echo '<p>' . esc_html__( 'Choose filters once, then generate the CSV feed, iCal link, or printable page URL from the same controls.', 'tonys-sportspress-enhancements' ) . '</p>';
-
-	echo '<form method="get" action="' . esc_url( admin_url( 'admin.php' ) ) . '" class="tse-schedule-exporter-form" style="max-width:720px;margin:20px 0 28px;">';
-	echo '<input type="hidden" name="page" value="tse-schedule-exporter" />';
-	echo '<div>';
-
-	echo '<div style="margin-bottom:16px;">';
-	echo '<label for="tse-schedule-exporter-export-type"><strong>' . esc_html__( 'Format', 'tonys-sportspress-enhancements' ) . '</strong></label><br />';
-	echo '<select id="tse-schedule-exporter-export-type" name="export_type">';
-	foreach ( tse_sp_schedule_exporter_get_export_types() as $type_key => $type_label ) {
-		printf(
-			'<option value="%1$s" %2$s>%3$s</option>',
-			esc_attr( $type_key ),
-			selected( $export_type, $type_key, false ),
-			esc_html( $type_label )
-		);
-	}
-	echo '</select>';
-	echo '<p class="description">' . esc_html__( 'CSV builds a feed URL, iCal Link builds a subscription URL, and Printable opens the printable page.', 'tonys-sportspress-enhancements' ) . '</p>';
-	echo '</div>';
-
-	echo '<div data-subformat-wrap="1" style="margin-bottom:16px;">';
-	echo '<label for="tse-schedule-exporter-subformat"><strong>' . esc_html__( 'CSV Layout', 'tonys-sportspress-enhancements' ) . '</strong></label><br />';
-	echo '<select id="tse-schedule-exporter-subformat" name="subformat">';
-	foreach ( tse_sp_event_export_get_formats() as $format_key => $format_definition ) {
-		printf(
-			'<option value="%1$s" %2$s>%3$s</option>',
-			esc_attr( $format_key ),
-			selected( $subformat, $format_key, false ),
-			esc_html( $format_definition['label'] )
-		);
-	}
-	echo '</select>';
-	echo '<p class="description">' . esc_html__( 'Matchup is away vs home. Team is opponent-based and requires one specific team.', 'tonys-sportspress-enhancements' ) . '</p>';
-	echo '</div>';
-
-	echo '<div style="margin-bottom:16px;">';
-	echo '<label for="tse-schedule-exporter-league"><strong>' . esc_html__( 'League', 'tonys-sportspress-enhancements' ) . '</strong></label><br />';
-	echo '<select id="tse-schedule-exporter-league" name="league_id" data-auto-submit="1">';
-	foreach ( $leagues as $league ) {
-		printf(
-			'<option value="%1$s" %2$s>%3$s</option>',
-			esc_attr( (string) $league->term_id ),
-			selected( $league_id, (int) $league->term_id, false ),
-			esc_html( $league->name )
-		);
-	}
-	echo '</select>';
-	echo '</div>';
-
-	echo '<div style="margin-bottom:16px;">';
-	echo '<label for="tse-schedule-exporter-season"><strong>' . esc_html__( 'Season', 'tonys-sportspress-enhancements' ) . '</strong></label><br />';
-	echo '<select id="tse-schedule-exporter-season" name="season_id" data-auto-submit="1">';
-	echo '<option value="0">' . esc_html__( 'Current / All matching events', 'tonys-sportspress-enhancements' ) . '</option>';
-	foreach ( $seasons as $season ) {
-		printf(
-			'<option value="%1$s" %2$s>%3$s</option>',
-			esc_attr( (string) $season->term_id ),
-			selected( $season_id, (int) $season->term_id, false ),
-			esc_html( $season->name )
-		);
-	}
-	echo '</select>';
-	echo '</div>';
-
-	echo '<div style="margin-bottom:16px;">';
-	echo '<label for="tse-schedule-exporter-team"><strong>' . esc_html__( 'Team', 'tonys-sportspress-enhancements' ) . '</strong></label><br />';
-	echo '<select id="tse-schedule-exporter-team" name="team_id">';
-	echo '<option value="0">' . esc_html__( 'All teams', 'tonys-sportspress-enhancements' ) . '</option>';
-	foreach ( $teams as $team ) {
-		printf(
-			'<option value="%1$s" %2$s>%3$s</option>',
-			esc_attr( (string) $team->ID ),
-			selected( $team_id, (int) $team->ID, false ),
-			esc_html( $team->post_title )
-		);
-	}
-	echo '</select>';
-	echo '<p class="description">' . esc_html__( 'Teams are filtered by the selected league and season.', 'tonys-sportspress-enhancements' ) . '</p>';
-	echo '</div>';
-
-	echo '<div style="margin-bottom:16px;">';
-	echo '<label for="tse-schedule-exporter-field"><strong>' . esc_html__( 'Field', 'tonys-sportspress-enhancements' ) . '</strong></label><br />';
-	echo '<select id="tse-schedule-exporter-field" name="field_id">';
-	echo '<option value="0">' . esc_html__( 'All fields', 'tonys-sportspress-enhancements' ) . '</option>';
-	foreach ( $fields as $field ) {
-		printf(
-			'<option value="%1$s" %2$s>%3$s</option>',
-			esc_attr( (string) $field->term_id ),
-			selected( $field_id, (int) $field->term_id, false ),
-			esc_html( $field->name )
-		);
-	}
-	echo '</select>';
-	echo '<p class="description">' . esc_html__( 'Use the field filter to narrow the feed to a specific venue.', 'tonys-sportspress-enhancements' ) . '</p>';
-	echo '</div>';
-
-	echo '</div>';
-	echo '</form>';
-
-	if ( empty( $teams ) ) {
-		echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'No SportsPress teams match the selected league and season.', 'tonys-sportspress-enhancements' ) . '</p></div>';
-		echo '</div>';
-		return;
-	}
-
-	echo '<div style="max-width:960px;padding:20px 24px;border:1px solid #dcdcde;background:#fff;">';
-	echo '<h2 style="margin-top:0;">' . esc_html__( 'Output URL', 'tonys-sportspress-enhancements' ) . '</h2>';
-	echo '<p>' . esc_html__( 'The generated URL below updates from the shared controls above.', 'tonys-sportspress-enhancements' ) . '</p>';
-
-	tse_sp_schedule_exporter_render_column_picker( 'matchup', 'admin', $subformat );
-	tse_sp_schedule_exporter_render_column_picker( 'team', 'admin', $subformat );
-
-	$base_args = array(
-		'league_id' => $league_id,
-		'team_id'   => $team_id,
-		'season_id' => $season_id,
-		'field_id'  => $field_id,
-		'format'    => $subformat,
-	);
-	$csv_url = tse_sp_event_export_get_feed_url( $base_args, 'csv' );
-	$ics_url = tse_sp_event_export_get_feed_url(
-		array(
-			'league_id' => $league_id,
-			'team_id'   => $team_id,
-			'season_id' => $season_id,
-			'field_id'  => $field_id,
-		),
-		'ics'
-	);
-	$print_url = tse_sp_schedule_exporter_get_printable_url( $team_id, $season_id, 'letter', $league_id );
-	$current_url = tse_sp_schedule_exporter_get_output_url( $export_type, $csv_url, $ics_url, $print_url );
-
-	echo '<div style="display:flex;align-items:center;gap:8px;max-width:100%;margin-top:16px;">';
-	echo '<input type="text" class="large-text code tse-output-url" readonly="readonly" value="' . esc_attr( $current_url ) . '" />';
-	echo '<button type="button" class="button tse-copy-link" title="' . esc_attr__( 'Copy URL', 'tonys-sportspress-enhancements' ) . '">' . esc_html__( 'Copy URL', 'tonys-sportspress-enhancements' ) . '</button>';
-	echo '<button type="button" class="button button-primary tse-open-link" data-csv-url="' . esc_url( $csv_url ) . '" data-ics-url="' . esc_url( $ics_url ) . '" data-print-url="' . esc_url( $print_url ) . '" title="' . esc_attr__( 'Open URL in new tab', 'tonys-sportspress-enhancements' ) . '">' . esc_html__( 'Open URL in New Tab', 'tonys-sportspress-enhancements' ) . '</button>';
-	echo '<button type="button" class="button button-primary tse-ics-ios-link" data-ics-url="' . esc_url( $ics_url ) . '" title="' . esc_attr__( 'Subscribe on iPhone or iPad', 'tonys-sportspress-enhancements' ) . '" style="display:none;">' . esc_html__( 'Subscribe on iPhone/iPad', 'tonys-sportspress-enhancements' ) . '</button>';
-	echo '<button type="button" class="button tse-ics-android-link" data-ics-url="' . esc_url( $ics_url ) . '" title="' . esc_attr__( 'Subscribe on Android', 'tonys-sportspress-enhancements' ) . '" style="display:none;">' . esc_html__( 'Subscribe on Android', 'tonys-sportspress-enhancements' ) . '</button>';
-	echo '</div>';
-	echo '<p class="description tse-output-note">' . esc_html__( 'Use the buttons to copy the generated URL or open the right destination for this export type.', 'tonys-sportspress-enhancements' ) . '</p>';
-	tse_sp_schedule_exporter_render_link_sync_script( true );
-	echo '</div>';
-	echo '</div>';
 }
 
 /**
