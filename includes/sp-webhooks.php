@@ -213,6 +213,8 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			echo '</p>';
 			echo '</div>';
 
+			$this->render_template_tag_reference();
+
 			echo '<div id="tse-webhook-rows" style="display:grid;gap:16px;max-width:1100px;">';
 			if ( empty( $webhooks ) ) {
 				$this->render_webhook_row( $this->default_webhook(), 0 );
@@ -330,6 +332,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		private function render_webhook_row( $webhook, $index ) {
 			$webhook = wp_parse_args( is_array( $webhook ) ? $webhook : array(), $this->default_webhook() );
 			$base    = self::OPTION_KEY . '[webhooks][' . $index . ']';
+			$destination_config = $this->get_destination_field_config( isset( $webhook['provider'] ) ? $webhook['provider'] : 'generic_json' );
 
 			if ( ! is_int( $index ) && ! ctype_digit( (string) $index ) ) {
 				$webhook['id'] = '';
@@ -384,10 +387,10 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			echo '</tr>';
 
 			echo '<tr>';
-			echo '<th scope="row"><label>' . esc_html__( 'Destination', 'tonys-sportspress-enhancements' ) . '</label></th>';
+			echo '<th scope="row"><label>' . esc_html( $destination_config['label'] ) . '</label></th>';
 			echo '<td>';
-			echo '<input type="text" class="large-text code" name="' . esc_attr( $base . '[url]' ) . '" value="' . esc_attr( $webhook['url'] ) . '" placeholder="https://chat.googleapis.com/v1/spaces/... or GroupMe bot_id" />';
-			echo '<p class="description" style="margin:6px 0 0;">' . esc_html__( 'Google Chat: paste the full incoming webhook URL. GroupMe Bot: enter the bot_id. Generic JSON: enter the destination URL.', 'tonys-sportspress-enhancements' ) . '</p>';
+			echo '<input type="text" class="large-text code" name="' . esc_attr( $base . '[url]' ) . '" value="' . esc_attr( $webhook['url'] ) . '" placeholder="' . esc_attr( $destination_config['placeholder'] ) . '" />';
+			echo '<p class="description" style="margin:6px 0 0;">' . esc_html( $destination_config['description'] ) . '</p>';
 			echo '</td>';
 			echo '</tr>';
 
@@ -396,6 +399,16 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			echo '<td>';
 			echo '<textarea class="large-text code" rows="11" name="' . esc_attr( $base . '[template]' ) . '">' . esc_textarea( $webhook['template'] ) . '</textarea>';
 			echo '<p class="description" style="margin:6px 0 0;">' . esc_html__( 'Example message:', 'tonys-sportspress-enhancements' ) . ' <code>{{ trigger.label }} - {{ event.title }} - {{ results.summary }}</code></p>';
+			echo '<p style="margin:10px 0 0 0;">';
+			echo '<label for="' . esc_attr( 'tse-webhook-test-event-' . $index ) . '" style="display:block;font-weight:600;margin-bottom:6px;">' . esc_html__( 'Test Event', 'tonys-sportspress-enhancements' ) . '</label>';
+			echo '<select id="' . esc_attr( 'tse-webhook-test-event-' . $index ) . '" name="' . esc_attr( 'tse_sp_webhook_test_event[' . $index . ']' ) . '" style="min-width:360px;max-width:100%;">';
+			echo '<option value="0">' . esc_html__( 'Use sample event data', 'tonys-sportspress-enhancements' ) . '</option>';
+			foreach ( $this->get_test_event_options() as $event_option ) {
+				echo '<option value="' . esc_attr( (string) $event_option['id'] ) . '">' . esc_html( $event_option['label'] ) . '</option>';
+			}
+			echo '</select>';
+			echo '<span class="description" style="display:block;margin-top:4px;">' . esc_html__( 'Choose a real SportsPress event to test the exact title, image, results, and links for that event.', 'tonys-sportspress-enhancements' ) . '</span>';
+			echo '</p>';
 			echo '<p style="margin:10px 0 0;">';
 			echo '<button type="button" class="button" data-tse-send-test="1">' . esc_html__( 'Send Test', 'tonys-sportspress-enhancements' ) . '</button> ';
 			echo '<span class="description" data-tse-test-status="1"></span>';
@@ -525,6 +538,146 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		}
 
 		/**
+		 * Render a collapsible template-tag reference.
+		 *
+		 * @return void
+		 */
+		private function render_template_tag_reference() {
+			echo '<details style="max-width:1100px;margin:0 0 16px;padding:0;border:1px solid #dcdcde;background:#fff;">';
+			echo '<summary style="cursor:pointer;padding:14px 18px;font-weight:600;">' . esc_html__( 'Available Template Tags', 'tonys-sportspress-enhancements' ) . '</summary>';
+			echo '<div style="padding:0 18px 18px;">';
+			echo '<p>' . esc_html__( 'Use these Jinja-style tags inside the message template. Dot notation works for nested values.', 'tonys-sportspress-enhancements' ) . '</p>';
+			echo '<table class="widefat striped" style="max-width:100%;">';
+			echo '<thead><tr><th style="width:32%;">' . esc_html__( 'Tag', 'tonys-sportspress-enhancements' ) . '</th><th>' . esc_html__( 'Description', 'tonys-sportspress-enhancements' ) . '</th></tr></thead><tbody>';
+			foreach ( $this->template_tag_definitions() as $tag_definition ) {
+				echo '<tr>';
+				echo '<td><code>' . esc_html( $tag_definition['tag'] ) . '</code></td>';
+				echo '<td>' . esc_html( $tag_definition['description'] ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+			echo '</div>';
+			echo '</details>';
+		}
+
+		/**
+		 * Get template tag definitions for the admin reference.
+		 *
+		 * @return array[]
+		 */
+		private function template_tag_definitions() {
+			return array(
+				array(
+					'tag'         => '{{ trigger.key }}',
+					'description' => __( 'Trigger slug such as event_datetime_changed or event_results_updated.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ trigger.label }}',
+					'description' => __( 'Human-readable trigger label.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ webhook.name }}',
+					'description' => __( 'The name configured for this webhook row.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ site.name }}',
+					'description' => __( 'The WordPress site name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.id }}',
+					'description' => __( 'SportsPress event post ID.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.title }}',
+					'description' => __( 'Formatted matchup title for the event.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.permalink }}',
+					'description' => __( 'Public event permalink.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.image }}',
+					'description' => __( 'Same matchup image URL used in the Open Graph tags.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.matchup_image }}',
+					'description' => __( 'Alias for event.image.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.scheduled.local_display }}',
+					'description' => __( 'Scheduled date/time in the site timezone.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.teams.0.name }}',
+					'description' => __( 'First team name in event order.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.venue.name }}',
+					'description' => __( 'Primary venue name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ results.summary }}',
+					'description' => __( 'Result summary string when scores exist.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.previous.local_display }}',
+					'description' => __( 'Previous scheduled date/time for date/time change notifications.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.current.local_display }}',
+					'description' => __( 'Current scheduled date/time for date/time change notifications.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ occurred_at.local_display }}',
+					'description' => __( 'Timestamp of when the notification was generated.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event|tojson }}',
+					'description' => __( 'Serialize a nested object as JSON.', 'tonys-sportspress-enhancements' ),
+				),
+			);
+		}
+
+		/**
+		 * Get recent event options for admin test sends.
+		 *
+		 * @return array[]
+		 */
+		private function get_test_event_options() {
+			$posts = get_posts(
+				array(
+					'post_type'      => 'sp_event',
+					'post_status'    => array( 'publish', 'future', 'draft', 'pending', 'private' ),
+					'posts_per_page' => 25,
+					'orderby'        => 'date',
+					'order'          => 'DESC',
+					'no_found_rows'  => true,
+				)
+			);
+
+			$options = array();
+			foreach ( $posts as $post ) {
+				if ( ! $post instanceof WP_Post ) {
+					continue;
+				}
+
+				$timestamp = get_post_timestamp( $post );
+				$label     = get_the_title( $post );
+
+				if ( $timestamp ) {
+					$label .= ' | ' . wp_date( 'Y-m-d g:i A', $timestamp, wp_timezone() );
+				}
+
+				$options[] = array(
+					'id'    => (int) $post->ID,
+					'label' => $label,
+				);
+			}
+
+			return $options;
+		}
+
+		/**
 		 * Get the configured webhooks option with defaults.
 		 *
 		 * @return array
@@ -575,6 +728,38 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		}
 
 		/**
+		 * Get destination field copy for a provider.
+		 *
+		 * @param string $provider Delivery provider key.
+		 * @return array
+		 */
+		private function get_destination_field_config( $provider ) {
+			switch ( $provider ) {
+				case 'groupme_bot':
+					return array(
+						'label'       => __( 'Destination (GroupMe bot_id)', 'tonys-sportspress-enhancements' ),
+						'placeholder' => '123456789012345678',
+						'description' => __( 'Enter only the GroupMe bot_id. Do not enter https://api.groupme.com/v3/bots/post; the plugin uses that endpoint automatically.', 'tonys-sportspress-enhancements' ),
+					);
+
+				case 'google_chat':
+					return array(
+						'label'       => __( 'Destination (Google Chat webhook URL)', 'tonys-sportspress-enhancements' ),
+						'placeholder' => 'https://chat.googleapis.com/v1/spaces/SPACE_ID/messages?key=KEY&token=TOKEN',
+						'description' => __( 'Paste the full Google Chat incoming webhook URL.', 'tonys-sportspress-enhancements' ),
+					);
+
+				case 'generic_json':
+				default:
+					return array(
+						'label'       => __( 'Destination (Webhook URL)', 'tonys-sportspress-enhancements' ),
+						'placeholder' => 'https://example.com/webhooks/sportspress',
+						'description' => __( 'Enter the HTTP or HTTPS URL that should receive the JSON payload.', 'tonys-sportspress-enhancements' ),
+					);
+			}
+		}
+
+		/**
 		 * Get trigger labels.
 		 *
 		 * @return array
@@ -615,6 +800,8 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			$raw_settings = isset( $_POST[ self::OPTION_KEY ] ) ? wp_unslash( $_POST[ self::OPTION_KEY ] ) : array();
 			$rows         = is_array( $raw_settings ) && isset( $raw_settings['webhooks'] ) && is_array( $raw_settings['webhooks'] ) ? array_values( $raw_settings['webhooks'] ) : array();
 			$row          = isset( $rows[0] ) && is_array( $rows[0] ) ? $rows[0] : array();
+			$test_events  = isset( $_POST['tse_sp_webhook_test_event'] ) && is_array( $_POST['tse_sp_webhook_test_event'] ) ? wp_unslash( $_POST['tse_sp_webhook_test_event'] ) : array();
+			$test_event_id = isset( $test_events[0] ) ? absint( $test_events[0] ) : 0;
 
 			if ( empty( $row ) ) {
 				wp_send_json_error(
@@ -636,7 +823,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			}
 
 			$trigger = ! empty( $webhook['triggers'] ) ? $webhook['triggers'][0] : 'manual_test';
-			$context = $this->build_test_context( $trigger, $webhook );
+			$context = $this->build_test_context( $trigger, $webhook, $test_event_id );
 			$result  = $this->deliver_webhook( $webhook['url'], $webhook['template'], $webhook, $context );
 
 			if ( is_wp_error( $result ) ) {
@@ -892,6 +1079,8 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 					'title'      => $event_title,
 					'raw_title'  => $post instanceof WP_Post ? get_the_title( $post ) : '',
 					'permalink'  => $post instanceof WP_Post ? get_permalink( $post ) : '',
+					'image'      => $post instanceof WP_Post && function_exists( 'asc_sp_event_matchup_image_url' ) ? asc_sp_event_matchup_image_url( $post ) : '',
+					'matchup_image' => $post instanceof WP_Post && function_exists( 'asc_sp_event_matchup_image_url' ) ? asc_sp_event_matchup_image_url( $post ) : '',
 					'edit_url'   => $post instanceof WP_Post ? get_edit_post_link( $post->ID, 'raw' ) : '',
 					'post_status' => $post instanceof WP_Post ? (string) $post->post_status : '',
 					'sp_status'  => (string) get_post_meta( $post_id, 'sp_status', true ),
@@ -929,7 +1118,14 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		 * @param array  $webhook Webhook configuration.
 		 * @return array
 		 */
-		private function build_test_context( $trigger, $webhook ) {
+		private function build_test_context( $trigger, $webhook, $event_id = 0 ) {
+			$event_id = absint( $event_id );
+			$post     = $event_id > 0 ? get_post( $event_id ) : null;
+
+			if ( $post instanceof WP_Post && 'sp_event' === $post->post_type ) {
+				return $this->build_real_event_test_context( $event_id, $trigger, $webhook );
+			}
+
 			$labels = $this->trigger_labels();
 			$now    = new DateTimeImmutable( 'now', wp_timezone() );
 			$next   = $now->modify( '+2 hours' );
@@ -954,6 +1150,8 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 					'title'       => __( 'Test Event: Away at Home', 'tonys-sportspress-enhancements' ),
 					'raw_title'   => __( 'Test Event', 'tonys-sportspress-enhancements' ),
 					'permalink'   => home_url( '/?tse-webhook-test=1' ),
+					'image'       => home_url( '/head-to-head?post=0' ),
+					'matchup_image' => home_url( '/head-to-head?post=0' ),
 					'edit_url'    => admin_url( 'edit.php?post_type=sp_event' ),
 					'post_status' => 'publish',
 					'sp_status'   => 'future',
@@ -1011,6 +1209,43 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 					'local_display' => wp_date( 'Y-m-d g:i A T', $now->getTimestamp(), wp_timezone() ),
 				),
 			);
+		}
+
+		/**
+		 * Build a test context from an actual SportsPress event.
+		 *
+		 * @param int    $event_id Event post ID.
+		 * @param string $trigger  Trigger slug.
+		 * @param array  $webhook  Webhook configuration.
+		 * @return array
+		 */
+		private function build_real_event_test_context( $event_id, $trigger, $webhook ) {
+			$post     = get_post( $event_id );
+			$schedule = $this->event_schedule_from_post( $post );
+			$changes  = array();
+
+			if ( 'event_datetime_changed' === $trigger ) {
+				$previous = $schedule;
+				if ( ! empty( $schedule['timestamp'] ) ) {
+					$previous_timestamp           = max( 0, (int) $schedule['timestamp'] - HOUR_IN_SECONDS );
+					$previous['timestamp']        = $previous_timestamp;
+					$previous['local_iso']        = wp_date( DATE_ATOM, $previous_timestamp, wp_timezone() );
+					$previous['local_display']    = wp_date( 'Y-m-d g:i A T', $previous_timestamp, wp_timezone() );
+					$previous['gmt_iso']          = gmdate( DATE_ATOM, $previous_timestamp );
+				}
+
+				$changes = array(
+					'previous' => $previous,
+					'current'  => $schedule,
+				);
+			} elseif ( 'event_results_updated' === $trigger ) {
+				$results = get_post_meta( $event_id, 'sp_results', true );
+				$changes = array(
+					'current' => is_array( $results ) ? $results : array(),
+				);
+			}
+
+			return $this->build_context( $event_id, $trigger, $changes, $webhook );
 		}
 
 		/**
@@ -1074,9 +1309,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			switch ( $provider ) {
 				case 'google_chat':
 					$request_url = $url;
-					$payload     = array(
-						'text' => $message,
-					);
+					$payload     = $this->build_google_chat_payload( $message, $title, $context );
 					break;
 
 				case 'groupme_bot':
@@ -1201,6 +1434,74 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 				),
 				'context' => $context,
 			);
+		}
+
+		/**
+		 * Build the Google Chat payload.
+		 *
+		 * Plain text messages do not render images inline, so when an HTTPS matchup
+		 * image exists we send a card with an image widget as well as text fallback.
+		 *
+		 * @param string $message Rendered message.
+		 * @param string $title   Derived title.
+		 * @param array  $context Render context.
+		 * @return array
+		 */
+		private function build_google_chat_payload( $message, $title, $context ) {
+			$payload = array(
+				'text' => $message,
+			);
+
+			$image_url = isset( $context['event']['image'] ) ? (string) $context['event']['image'] : '';
+			if ( 0 !== strpos( $image_url, 'https://' ) ) {
+				return $payload;
+			}
+
+			$widgets = array(
+				array(
+					'textParagraph' => array(
+						'text' => nl2br( esc_html( $message ) ),
+					),
+				),
+				array(
+					'image' => array(
+						'imageUrl' => $image_url,
+						'altText'  => isset( $context['event']['title'] ) ? (string) $context['event']['title'] : $title,
+					),
+				),
+			);
+
+			if ( ! empty( $context['event']['permalink'] ) ) {
+				$widgets[1]['image']['onClick'] = array(
+					'openLink' => array(
+						'url' => (string) $context['event']['permalink'],
+					),
+				);
+			}
+
+			$header = array(
+				'title' => $title,
+			);
+
+			if ( ! empty( $context['event']['scheduled']['local_display'] ) ) {
+				$header['subtitle'] = (string) $context['event']['scheduled']['local_display'];
+			}
+
+			$payload['cardsV2'] = array(
+				array(
+					'cardId' => 'matchup-image',
+					'card'   => array(
+						'header'   => $header,
+						'sections' => array(
+							array(
+								'widgets' => $widgets,
+							),
+						),
+					),
+				),
+			);
+
+			return $payload;
 		}
 
 		/**

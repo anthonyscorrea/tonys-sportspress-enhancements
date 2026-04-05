@@ -8,6 +8,18 @@ Author: Your Name
 
 add_action('wp_head', 'custom_open_graph_tags_with_sportspress_integration');
 
+function asc_sp_event_matchup_image_url( $post ) {
+	if ( is_numeric( $post ) ) {
+		$post = get_post( $post );
+	}
+
+	if ( ! $post || 'sp_event' !== $post->post_type ) {
+		return '';
+	}
+
+	return get_site_url() . '/head-to-head?post=' . $post->ID;
+}
+
 function asc_generate_sp_event_title( $post ) {
   // See https://github.com/ThemeBoy/SportsPress/blob/770fa8c6654d7d6648791e877709c2428677635b/includes/admin/post-types/class-sp-admin-cpt-event.php#L99C40-L99C55
 	if ( is_numeric( $post ) ) {
@@ -175,7 +187,7 @@ function custom_open_graph_tags_with_sportspress_integration() {
               $description .= " " . "{$teams_result_array[0]['team_name']} ({$teams_result_array[0]['outcome']}), {$teams_result_array[1]['team_name']} ({$teams_result_array[1]['outcome']})." ;
             }
             $description .= " " . $post->post_content;
-            $image = get_site_url() . "/head-to-head?post={$post->ID}";
+            $image = asc_sp_event_matchup_image_url( $post );
             echo '<meta property="og:type" content="article" />' . "\n";
             echo '<meta property="og:image" content="'. $image . '" />' . "\n";
             echo '<meta property="og:title" content="' . $title . '" />' . "\n";

@@ -15,13 +15,14 @@ class Test_SP_Webhooks extends WP_UnitTestCase {
 	 */
 	public function test_render_template_supports_dot_paths_and_tojson() {
 		$webhooks = Tony_Sportspress_Webhooks::instance();
-		$template = 'Trigger={{ trigger.key }} Team={{ event.teams.0.name }} Payload={{ event|tojson }}';
+		$template = 'Trigger={{ trigger.key }} Team={{ event.teams.0.name }} Image={{ event.image }} Payload={{ event|tojson }}';
 		$context  = array(
 			'trigger' => array(
 				'key' => 'event_results_updated',
 			),
 			'event'   => array(
 				'id'    => 55,
+				'image' => 'https://example.com/head-to-head?post=55',
 				'teams' => array(
 					array(
 						'name' => 'Blue Team',
@@ -34,6 +35,7 @@ class Test_SP_Webhooks extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'Trigger=event_results_updated', $rendered );
 		$this->assertStringContainsString( 'Team=Blue Team', $rendered );
+		$this->assertStringContainsString( 'Image=https://example.com/head-to-head?post=55', $rendered );
 		$this->assertStringContainsString( '"id":55', $rendered );
 	}
 
