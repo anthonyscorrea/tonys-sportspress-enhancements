@@ -8,13 +8,13 @@
  * Text Domain:     tonys-sportspress-enhancements
  * Domain Path:     /languages
  * Update URI:      https://github.com/anthonyscorrea/tonys-sportspress-enhancements
- * Version:         0.1.9
+ * Version:         0.1.10
  *
  * @package         Tonys_Sportspress_Enhancements
  */
 
 if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION' ) ) {
-	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION', '0.1.9' );
+	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION', '0.1.10' );
 }
 
 if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_FILE' ) ) {
