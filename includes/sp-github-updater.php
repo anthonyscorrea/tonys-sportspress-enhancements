@@ -83,11 +83,7 @@ if ( ! class_exists( 'Tony_Sportspress_GitHub_Updater' ) ) {
 			$remote_version = $this->normalize_version( $release['version'] );
 			$current_version = $this->normalize_version( TONY_SPORTSPRESS_ENHANCEMENTS_VERSION );
 
-			if ( version_compare( $remote_version, $current_version, '<=' ) ) {
-				return $transient;
-			}
-
-			$transient->response[ $this->plugin_basename ] = (object) array(
+			$plugin_data = (object) array(
 				'id'            => $release['url'],
 				'slug'          => $this->plugin_slug,
 				'plugin'        => $this->plugin_basename,
@@ -101,6 +97,16 @@ if ( ! class_exists( 'Tony_Sportspress_GitHub_Updater' ) ) {
 				'banners_rtl'   => array(),
 				'translations'  => array(),
 			);
+
+			if ( version_compare( $remote_version, $current_version, '<=' ) ) {
+				unset( $transient->response[ $this->plugin_basename ] );
+				$transient->no_update[ $this->plugin_basename ] = $plugin_data;
+
+				return $transient;
+			}
+
+			unset( $transient->no_update[ $this->plugin_basename ] );
+			$transient->response[ $this->plugin_basename ] = $plugin_data;
 
 			return $transient;
 		}
