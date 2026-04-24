@@ -41,6 +41,11 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		const SCHEDULE_SIGNATURE_META_KEY = '_tse_sp_webhook_schedule_signature';
 
 		/**
+		 * Meta key used to store the last known schedule snapshot.
+		 */
+		const SCHEDULE_SNAPSHOT_META_KEY = '_tse_sp_webhook_schedule_snapshot';
+
+		/**
 		 * Singleton instance.
 		 *
 		 * @var Tony_Sportspress_Webhooks|null
@@ -53,6 +58,13 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		 * @var bool
 		 */
 		private $booted = false;
+
+		/**
+		 * Pending event ids to evaluate once the request settles.
+		 *
+		 * @var int[]
+		 */
+		private $pending_schedule_post_ids = array();
 
 		/**
 		 * Get singleton instance.
@@ -82,14 +94,23 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			add_filter( 'tse_tonys_settings_tabs', array( $this, 'register_settings_tab' ) );
 			add_action( 'tse_tonys_settings_render_tab_' . self::TAB_WEBHOOKS, array( $this, 'render_settings_tab' ) );
 			add_action( 'post_updated', array( $this, 'handle_event_schedule_update' ), 10, 3 );
+			add_action( 'set_object_terms', array( $this, 'handle_event_venue_update' ), 10, 6 );
+			add_action( 'added_post_meta', array( $this, 'handle_event_team_meta_change' ), 10, 4 );
+			add_action( 'updated_post_meta', array( $this, 'handle_event_team_meta_change' ), 10, 4 );
+			add_action( 'deleted_post_meta', array( $this, 'handle_event_team_meta_change' ), 10, 4 );
+			add_action( 'added_post_meta', array( $this, 'handle_event_status_meta_change' ), 10, 4 );
+			add_action( 'updated_post_meta', array( $this, 'handle_event_status_meta_change' ), 10, 4 );
+			add_action( 'deleted_post_meta', array( $this, 'handle_event_status_meta_change' ), 10, 4 );
 			add_action( 'added_post_meta', array( $this, 'handle_event_results_meta_change' ), 10, 4 );
 			add_action( 'updated_post_meta', array( $this, 'handle_event_results_meta_change' ), 10, 4 );
 			add_action( 'deleted_post_meta', array( $this, 'handle_event_results_meta_change' ), 10, 4 );
+			add_action( 'shutdown', array( $this, 'process_pending_schedule_updates' ), 100 );
 
 			if ( is_admin() ) {
 				add_action( 'admin_init', array( $this, 'register_settings' ) );
 				add_filter( 'option_page_capability_' . self::OPTION_GROUP, array( $this, 'settings_capability' ) );
 				add_action( 'wp_ajax_tse_sp_webhook_test', array( $this, 'handle_test_webhook_ajax' ) );
+				add_action( 'admin_post_tse_sp_reset_schedule_snapshots', array( $this, 'handle_reset_schedule_snapshots_admin' ) );
 			}
 		}
 
@@ -203,11 +224,32 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			echo '<p>' . esc_html__( 'Create multiple outbound notifications for SportsPress events. Each webhook can listen for schedule changes, result updates, or both, then send the rendered message to the selected destination type.', 'tonys-sportspress-enhancements' ) . '</p>';
 			echo '<p class="description">' . esc_html__( 'Google Chat incoming webhooks send JSON with a text field. GroupMe bot delivery sends bot_id and text to the GroupMe bots endpoint. Generic JSON sends a richer payload with message and context.', 'tonys-sportspress-enhancements' ) . '</p>';
 
+			if ( isset( $_GET['tse_sp_snapshots_reset'] ) ) {
+				$reset_count = isset( $_GET['tse_sp_snapshots_reset_count'] ) ? absint( wp_unslash( $_GET['tse_sp_snapshots_reset_count'] ) ) : 0;
+				echo '<div class="notice notice-success inline"><p>';
+				echo esc_html(
+					sprintf(
+						/* translators: %d: number of SportsPress events reset. */
+						__( 'Schedule snapshots reset and re-baselined for %d event(s).', 'tonys-sportspress-enhancements' ),
+						$reset_count
+					)
+				);
+				echo '</p></div>';
+			}
+
+			echo '<div style="margin:18px 0 12px;padding:16px 18px;border:1px solid #dcdcde;background:#fff;max-width:1100px;">';
+			echo '<strong>' . esc_html__( 'Schedule Snapshot Tools', 'tonys-sportspress-enhancements' ) . '</strong>';
+			echo '<p style="margin:8px 0 0;">' . esc_html__( 'Reset stored schedule snapshots for existing events and immediately save a fresh baseline from the current event data.', 'tonys-sportspress-enhancements' ) . '</p>';
+			echo '<p style="margin:12px 0 0;">';
+			echo '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=tse_sp_reset_schedule_snapshots' ), 'tse_sp_reset_schedule_snapshots' ) ) . '" class="button button-secondary" onclick="return window.confirm(' . wp_json_encode( __( 'Reset and rebuild webhook schedule snapshots for all SportsPress events?', 'tonys-sportspress-enhancements' ) ) . ');">' . esc_html__( 'Reset And Rebuild Snapshots', 'tonys-sportspress-enhancements' ) . '</a>';
+			echo '</p>';
+			echo '</div>';
+
 			echo '<div style="margin:18px 0 12px;padding:16px 18px;border:1px solid #dcdcde;background:#fff;max-width:1100px;">';
 			echo '<strong>' . esc_html__( 'Message template variables', 'tonys-sportspress-enhancements' ) . '</strong>';
 			echo '<p style="margin:8px 0 0;">';
 			echo esc_html__( 'Use Jinja-style placeholders such as', 'tonys-sportspress-enhancements' ) . ' ';
-			echo '<code>{{ event.title }}</code>, <code>{{ event.permalink }}</code>, <code>{{ trigger.key }}</code>, <code>{{ changes.previous.local_display }}</code>, <code>{{ changes.current.local_display }}</code>, <code>{{ results.summary }}</code>, ';
+			echo '<code>{{ event.title }}</code>, <code>{{ event.status }}</code>, <code>{{ event.venue.name }}</code>, <code>{{ event.field.short_name }}</code>, <code>{{ event.scheduled.local_display }}</code>, <code>{{ event.scheduled.timestamp|date("g:i A") }}</code>, <code>{{ changes.previous.local_display }}</code>, <code>{{ changes.current.local_display }}</code>, <code>{{ changes.previous.status }}</code>, <code>{{ changes.current.status }}</code>, <code>{{ results.summary }}</code>, ';
 			echo esc_html__( 'or serialize values safely for JSON with', 'tonys-sportspress-enhancements' ) . ' <code>{{ event|tojson }}</code> ' . esc_html__( 'and', 'tonys-sportspress-enhancements' ) . ' <code>{{ event.title|tojson }}</code>. ';
 			echo esc_html__( 'The rendered template becomes the outgoing message text.', 'tonys-sportspress-enhancements' );
 			echo '</p>';
@@ -238,7 +280,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		}
 
 		/**
-		 * Send notifications when an event date/time changes.
+		 * Send notifications when an event schedule changes.
 		 *
 		 * @param int     $post_id    Event post ID.
 		 * @param WP_Post $post_after Updated post object.
@@ -254,28 +296,147 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 				return;
 			}
 
-			$previous = $this->event_schedule_from_post( $post_before );
-			$current  = $this->event_schedule_from_post( $post_after );
+			$this->queue_schedule_update( $post_id );
+		}
 
-			if ( $previous['local_iso'] === $current['local_iso'] && $previous['gmt_iso'] === $current['gmt_iso'] ) {
+		/**
+		 * Send notifications when an event venue changes.
+		 *
+		 * @param int          $object_id  Object id.
+		 * @param array|string $terms      Submitted terms.
+		 * @param array        $tt_ids     Current term taxonomy ids.
+		 * @param string       $taxonomy   Taxonomy slug.
+		 * @param bool         $append     Whether terms were appended.
+		 * @param array        $old_tt_ids Previous term taxonomy ids.
+		 * @return void
+		 */
+		public function handle_event_venue_update( $object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids ) {
+			unset( $terms, $tt_ids, $append, $old_tt_ids );
+
+			if ( 'sp_venue' !== $taxonomy ) {
 				return;
 			}
 
-			$signature = md5( $current['gmt_iso'] . '|' . $current['local_iso'] );
-			if ( $signature === (string) get_post_meta( $post_id, self::SCHEDULE_SIGNATURE_META_KEY, true ) ) {
+			$post = get_post( $object_id );
+			if ( ! $this->should_handle_event_post( $object_id, $post ) ) {
 				return;
 			}
 
-			update_post_meta( $post_id, self::SCHEDULE_SIGNATURE_META_KEY, $signature );
+			$this->queue_schedule_update( $object_id );
+		}
 
-			$this->dispatch_trigger(
-				'event_datetime_changed',
-				$post_id,
-				array(
-					'previous' => $previous,
-					'current'  => $current,
-				)
-			);
+		/**
+		 * Send notifications when an event team assignment changes.
+		 *
+		 * @param mixed  $meta_id_or_ids Meta identifier.
+		 * @param int    $post_id        Event post ID.
+		 * @param string $meta_key       Meta key.
+		 * @param mixed  $meta_value     Meta value.
+		 * @return void
+		 */
+		public function handle_event_team_meta_change( $meta_id_or_ids, $post_id, $meta_key, $meta_value ) {
+			unset( $meta_id_or_ids, $meta_value );
+
+			if ( 'sp_team' !== $meta_key ) {
+				return;
+			}
+
+			$post = get_post( $post_id );
+			if ( ! $this->should_handle_event_post( $post_id, $post ) ) {
+				return;
+			}
+
+			$this->queue_schedule_update( $post_id );
+		}
+
+		/**
+		 * Queue schedule evaluation when an event status changes.
+		 *
+		 * @param mixed  $meta_id_or_ids Meta identifier.
+		 * @param int    $post_id        Event post ID.
+		 * @param string $meta_key       Meta key.
+		 * @param mixed  $meta_value     Meta value.
+		 * @return void
+		 */
+		public function handle_event_status_meta_change( $meta_id_or_ids, $post_id, $meta_key, $meta_value ) {
+			unset( $meta_id_or_ids, $meta_value );
+
+			if ( 'sp_status' !== $meta_key ) {
+				return;
+			}
+
+			$post = get_post( $post_id );
+			if ( ! $this->should_handle_event_post( $post_id, $post ) ) {
+				return;
+			}
+
+			$this->queue_schedule_update( $post_id );
+		}
+
+		/**
+		 * Queue an event for one final schedule comparison at shutdown.
+		 *
+		 * @param int $post_id Event post id.
+		 * @return void
+		 */
+		private function queue_schedule_update( $post_id ) {
+			$post_id = absint( $post_id );
+			if ( $post_id <= 0 ) {
+				return;
+			}
+
+			if ( ! in_array( $post_id, $this->pending_schedule_post_ids, true ) ) {
+				$this->pending_schedule_post_ids[] = $post_id;
+			}
+		}
+
+		/**
+		 * Process all queued schedule updates once the request has settled.
+		 *
+		 * @return void
+		 */
+		public function process_pending_schedule_updates() {
+			if ( empty( $this->pending_schedule_post_ids ) ) {
+				return;
+			}
+
+			$post_ids = $this->pending_schedule_post_ids;
+			$this->pending_schedule_post_ids = array();
+
+			foreach ( $post_ids as $post_id ) {
+				$post = get_post( $post_id );
+				if ( ! $this->should_handle_event_post( $post_id, $post ) ) {
+					continue;
+				}
+
+				$current_snapshot  = $this->build_event_schedule_snapshot( $post_id );
+				$previous_snapshot = $this->get_stored_schedule_snapshot( $post_id );
+
+				if ( empty( $current_snapshot['local_iso'] ) && empty( $current_snapshot['venue']['name'] ) && empty( $current_snapshot['teams'] ) ) {
+					continue;
+				}
+
+				if ( empty( $previous_snapshot ) ) {
+					$this->store_schedule_snapshot( $post_id, $current_snapshot );
+					continue;
+				}
+
+				if ( $this->schedule_snapshots_match( $previous_snapshot, $current_snapshot ) ) {
+					$this->store_schedule_snapshot( $post_id, $current_snapshot );
+					continue;
+				}
+
+				$this->store_schedule_snapshot( $post_id, $current_snapshot );
+
+				$this->dispatch_trigger(
+					'event_datetime_changed',
+					$post_id,
+					array(
+						'previous' => $previous_snapshot,
+						'current'  => $current_snapshot,
+					)
+				);
+			}
 		}
 
 		/**
@@ -569,7 +730,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			return array(
 				array(
 					'tag'         => '{{ trigger.key }}',
-					'description' => __( 'Trigger slug such as event_datetime_changed or event_results_updated.', 'tonys-sportspress-enhancements' ),
+					'description' => __( 'Trigger slug such as event_datetime_changed or event_results_updated. The schedule trigger includes date, time, place, and team changes.', 'tonys-sportspress-enhancements' ),
 				),
 				array(
 					'tag'         => '{{ trigger.label }}',
@@ -596,6 +757,10 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 					'description' => __( 'Public event permalink.', 'tonys-sportspress-enhancements' ),
 				),
 				array(
+					'tag'         => '{{ event.status }}',
+					'description' => __( 'Current SportsPress schedule status such as On time, TBD, Postponed, or Canceled.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
 					'tag'         => '{{ event.image }}',
 					'description' => __( 'Same matchup image URL used in the Open Graph tags.', 'tonys-sportspress-enhancements' ),
 				),
@@ -605,15 +770,59 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 				),
 				array(
 					'tag'         => '{{ event.scheduled.local_display }}',
-					'description' => __( 'Scheduled date/time in the site timezone.', 'tonys-sportspress-enhancements' ),
+					'description' => __( 'Scheduled date/time in the venue timezone (Central Time).', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.scheduled.date }}',
+					'description' => __( 'Scheduled date in the venue timezone.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.scheduled.time }}',
+					'description' => __( 'Scheduled time in the venue timezone.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.scheduled.timezone }}',
+					'description' => __( 'Venue timezone abbreviation such as CST or CDT.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.scheduled.timestamp|date("g:i A") }}',
+					'description' => __( 'Format a timestamp with a PHP date format string in the venue timezone.', 'tonys-sportspress-enhancements' ),
 				),
 				array(
 					'tag'         => '{{ event.teams.0.name }}',
 					'description' => __( 'First team name in event order.', 'tonys-sportspress-enhancements' ),
 				),
 				array(
+					'tag'         => '{{ event.home_team.name }}',
+					'description' => __( 'Current home team name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.away_team.name }}',
+					'description' => __( 'Current away team name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
 					'tag'         => '{{ event.venue.name }}',
 					'description' => __( 'Primary venue name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.venue.short_name }}',
+					'description' => __( 'Primary venue short name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.venue.abbreviation }}',
+					'description' => __( 'Primary venue abbreviation.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.field.name }}',
+					'description' => __( 'Alias for the primary venue name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.field.short_name }}',
+					'description' => __( 'Alias for the primary venue short name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ event.field.abbreviation }}',
+					'description' => __( 'Alias for the primary venue abbreviation.', 'tonys-sportspress-enhancements' ),
 				),
 				array(
 					'tag'         => '{{ results.summary }}',
@@ -621,11 +830,59 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 				),
 				array(
 					'tag'         => '{{ changes.previous.local_display }}',
-					'description' => __( 'Previous scheduled date/time for date/time change notifications.', 'tonys-sportspress-enhancements' ),
+					'description' => __( 'Previous scheduled date/time for change notifications, in the venue timezone.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.previous.time }}',
+					'description' => __( 'Previous scheduled time for change notifications, in the venue timezone.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.previous.status }}',
+					'description' => __( 'Previous SportsPress schedule status when it changed.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.previous.venue.name }}',
+					'description' => __( 'Previous venue name when the field/venue changed.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.previous.field.name }}',
+					'description' => __( 'Alias for the previous venue name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.previous.home_team.name }}',
+					'description' => __( 'Previous home team name when a team changed.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.previous.away_team.name }}',
+					'description' => __( 'Previous away team name when a team changed.', 'tonys-sportspress-enhancements' ),
 				),
 				array(
 					'tag'         => '{{ changes.current.local_display }}',
-					'description' => __( 'Current scheduled date/time for date/time change notifications.', 'tonys-sportspress-enhancements' ),
+					'description' => __( 'Current scheduled date/time for change notifications, in the venue timezone.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.current.time }}',
+					'description' => __( 'Current scheduled time for change notifications, in the venue timezone.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.current.status }}',
+					'description' => __( 'Current SportsPress schedule status when it changed.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.current.venue.name }}',
+					'description' => __( 'Current venue name when the field/venue changed.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.current.field.name }}',
+					'description' => __( 'Alias for the current venue name.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.current.home_team.name }}',
+					'description' => __( 'Current home team name when a team changed.', 'tonys-sportspress-enhancements' ),
+				),
+				array(
+					'tag'         => '{{ changes.current.away_team.name }}',
+					'description' => __( 'Current away team name when a team changed.', 'tonys-sportspress-enhancements' ),
 				),
 				array(
 					'tag'         => '{{ occurred_at.local_display }}',
@@ -766,7 +1023,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		 */
 		private function trigger_labels() {
 			return array(
-				'event_datetime_changed' => __( 'Game date/time changes', 'tonys-sportspress-enhancements' ),
+				'event_datetime_changed' => __( 'Schedule changes', 'tonys-sportspress-enhancements' ),
 				'event_results_updated'  => __( 'Results updated', 'tonys-sportspress-enhancements' ),
 			);
 		}
@@ -778,6 +1035,54 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		 */
 		private function default_template() {
 			return "{{ trigger.label }}\n{{ event.title }}\n{{ event.scheduled.local_display }}\n{{ results.summary }}\n{{ event.permalink }}";
+		}
+
+		/**
+		 * Reset stored schedule snapshots for all SportsPress events from the admin UI.
+		 *
+		 * @return void
+		 */
+		public function handle_reset_schedule_snapshots_admin() {
+			if ( ! current_user_can( 'manage_sportspress' ) ) {
+				wp_die( esc_html__( 'You do not have permission to reset webhook schedule snapshots.', 'tonys-sportspress-enhancements' ), 403 );
+			}
+
+			check_admin_referer( 'tse_sp_reset_schedule_snapshots' );
+
+			$event_ids = get_posts(
+				array(
+					'post_type'      => 'sp_event',
+					'post_status'    => array( 'publish', 'future', 'draft', 'pending', 'private' ),
+					'posts_per_page' => -1,
+					'fields'         => 'ids',
+					'no_found_rows'  => true,
+				)
+			);
+
+			$reset_count = 0;
+			foreach ( $event_ids as $event_id ) {
+				$event_id = absint( $event_id );
+				if ( $event_id <= 0 ) {
+					continue;
+				}
+
+				delete_post_meta( $event_id, self::SCHEDULE_SNAPSHOT_META_KEY );
+				delete_post_meta( $event_id, self::SCHEDULE_SIGNATURE_META_KEY );
+				$this->store_schedule_snapshot( $event_id, $this->build_event_schedule_snapshot( $event_id ) );
+				++$reset_count;
+			}
+
+			$redirect_url = add_query_arg(
+				array(
+					'tab'                          => self::TAB_WEBHOOKS,
+					'tse_sp_snapshots_reset'       => 1,
+					'tse_sp_snapshots_reset_count' => $reset_count,
+				),
+				wp_get_referer() ? wp_get_referer() : admin_url()
+			);
+
+			wp_safe_redirect( $redirect_url );
+			exit;
 		}
 
 		/**
@@ -797,11 +1102,12 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 
 			check_ajax_referer( 'tse_sp_webhook_test', 'nonce' );
 
-			$raw_settings = isset( $_POST[ self::OPTION_KEY ] ) ? wp_unslash( $_POST[ self::OPTION_KEY ] ) : array();
-			$rows         = is_array( $raw_settings ) && isset( $raw_settings['webhooks'] ) && is_array( $raw_settings['webhooks'] ) ? array_values( $raw_settings['webhooks'] ) : array();
-			$row          = isset( $rows[0] ) && is_array( $rows[0] ) ? $rows[0] : array();
-			$test_events  = isset( $_POST['tse_sp_webhook_test_event'] ) && is_array( $_POST['tse_sp_webhook_test_event'] ) ? wp_unslash( $_POST['tse_sp_webhook_test_event'] ) : array();
-			$test_event_id = isset( $test_events[0] ) ? absint( $test_events[0] ) : 0;
+			$raw_settings  = isset( $_POST[ self::OPTION_KEY ] ) ? wp_unslash( $_POST[ self::OPTION_KEY ] ) : array();
+			$rows          = is_array( $raw_settings ) && isset( $raw_settings['webhooks'] ) && is_array( $raw_settings['webhooks'] ) ? $raw_settings['webhooks'] : array();
+			$test_events   = isset( $_POST['tse_sp_webhook_test_event'] ) && is_array( $_POST['tse_sp_webhook_test_event'] ) ? wp_unslash( $_POST['tse_sp_webhook_test_event'] ) : array();
+			$submitted_row = $this->get_submitted_test_webhook_row( $rows, $test_events );
+			$row           = isset( $submitted_row['row'] ) && is_array( $submitted_row['row'] ) ? $submitted_row['row'] : array();
+			$test_event_id = isset( $submitted_row['event_id'] ) ? (int) $submitted_row['event_id'] : 0;
 
 			if ( empty( $row ) ) {
 				wp_send_json_error(
@@ -842,6 +1148,36 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 					'message' => sprintf( __( 'Test sent successfully. Remote response: HTTP %d.', 'tonys-sportspress-enhancements' ), $status_code ),
 					'status_code' => $status_code,
 				)
+			);
+		}
+
+		/**
+		 * Get the submitted webhook row and selected test event from the AJAX payload.
+		 *
+		 * @param array $rows        Submitted webhook rows keyed by row index.
+		 * @param array $test_events Submitted test event ids keyed by row index.
+		 * @return array{row: array, event_id: int}
+		 */
+		private function get_submitted_test_webhook_row( $rows, $test_events ) {
+			if ( ! is_array( $rows ) || empty( $rows ) ) {
+				return array(
+					'row'      => array(),
+					'event_id' => 0,
+				);
+			}
+
+			foreach ( $rows as $row_index => $row ) {
+				if ( is_array( $row ) ) {
+					return array(
+						'row'      => $row,
+						'event_id' => isset( $test_events[ $row_index ] ) ? absint( $test_events[ $row_index ] ) : 0,
+					);
+				}
+			}
+
+			return array(
+				'row'      => array(),
+				'event_id' => 0,
 			);
 		}
 
@@ -1003,9 +1339,11 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		 * @return array
 		 */
 		private function event_schedule_from_post( $post ) {
-			$timezone = wp_timezone();
 			$utc      = new DateTimeZone( 'UTC' );
 			$empty    = array(
+				'date'          => '',
+				'time'          => '',
+				'timezone'      => '',
 				'local_iso'     => '',
 				'local_display' => '',
 				'gmt_iso'       => '',
@@ -1018,6 +1356,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 
 			$local = null;
 			$gmt   = null;
+			$timezone = $this->get_event_timezone();
 
 			if ( ! empty( $post->post_date_gmt ) && '0000-00-00 00:00:00' !== $post->post_date_gmt ) {
 				$gmt   = new DateTimeImmutable( $post->post_date_gmt, $utc );
@@ -1031,12 +1370,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 				return $empty;
 			}
 
-			return array(
-				'local_iso'     => $local->format( DATE_ATOM ),
-				'local_display' => wp_date( 'Y-m-d g:i A T', $local->getTimestamp(), $timezone ),
-				'gmt_iso'       => $gmt->format( DATE_ATOM ),
-				'timestamp'     => $local->getTimestamp(),
-			);
+			return $this->build_schedule_data( $local->getTimestamp(), $gmt->format( DATE_ATOM ) );
 		}
 
 		/**
@@ -1052,12 +1386,14 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			$post        = get_post( $post_id );
 			$schedule    = $this->event_schedule_from_post( $post );
 			$results     = get_post_meta( $post_id, 'sp_results', true );
-			$teams       = $this->get_event_teams( $post_id );
-			$venue       = $this->get_event_venue( $post_id );
-			$event_title = $this->get_event_title( $post_id );
-			$results_arr = is_array( $results ) ? $results : array();
-			$results_sum = $this->get_results_summary( $post );
-			$now         = new DateTimeImmutable( 'now', wp_timezone() );
+			$teams             = $this->get_event_teams( $post_id );
+			$venue             = $this->get_event_venue( $post_id );
+			$event_title       = $this->get_event_title( $post_id );
+			$event_status_raw  = (string) get_post_meta( $post_id, 'sp_status', true );
+			$event_status      = $this->get_event_status_label( $event_status_raw );
+			$results_arr       = is_array( $results ) ? $results : array();
+			$results_sum       = $this->get_results_summary( $post );
+			$now               = new DateTimeImmutable( 'now', wp_timezone() );
 
 			$context = array(
 				'trigger' => array(
@@ -1083,10 +1419,14 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 					'matchup_image' => $post instanceof WP_Post && function_exists( 'asc_sp_event_matchup_image_url' ) ? asc_sp_event_matchup_image_url( $post ) : '',
 					'edit_url'   => $post instanceof WP_Post ? get_edit_post_link( $post->ID, 'raw' ) : '',
 					'post_status' => $post instanceof WP_Post ? (string) $post->post_status : '',
-					'sp_status'  => (string) get_post_meta( $post_id, 'sp_status', true ),
+					'status'     => $event_status,
+					'sp_status'  => $this->normalize_event_status_key( $event_status_raw ),
 					'scheduled'  => $schedule,
 					'teams'      => $teams,
+					'home_team'  => isset( $teams[0] ) ? $teams[0] : $this->normalize_single_team_data( array() ),
+					'away_team'  => isset( $teams[1] ) ? $teams[1] : $this->normalize_single_team_data( array() ),
 					'venue'      => $venue,
+					'field'      => $venue,
 				),
 				'changes' => is_array( $changes ) ? $changes : array(),
 				'results' => array(
@@ -1127,7 +1467,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			}
 
 			$labels = $this->trigger_labels();
-			$now    = new DateTimeImmutable( 'now', wp_timezone() );
+			$now    = new DateTimeImmutable( 'now', $this->get_event_timezone() );
 			$next   = $now->modify( '+2 hours' );
 
 			return array(
@@ -1154,13 +1494,9 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 					'matchup_image' => home_url( '/head-to-head?post=0' ),
 					'edit_url'    => admin_url( 'edit.php?post_type=sp_event' ),
 					'post_status' => 'publish',
-					'sp_status'   => 'future',
-					'scheduled'   => array(
-						'local_iso'     => $next->format( DATE_ATOM ),
-						'local_display' => wp_date( 'Y-m-d g:i A T', $next->getTimestamp(), wp_timezone() ),
-						'gmt_iso'       => $next->setTimezone( new DateTimeZone( 'UTC' ) )->format( DATE_ATOM ),
-						'timestamp'     => $next->getTimestamp(),
-					),
+					'status'      => 'On time',
+					'sp_status'   => 'ok',
+					'scheduled'   => $this->build_schedule_data( $next->getTimestamp() ),
 					'teams'       => array(
 						array(
 							'id'           => 0,
@@ -1177,24 +1513,89 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 							'role'         => 'away',
 						),
 					),
+					'home_team'   => array(
+						'id'           => 0,
+						'name'         => __( 'Home Team', 'tonys-sportspress-enhancements' ),
+						'short_name'   => __( 'Home', 'tonys-sportspress-enhancements' ),
+						'abbreviation' => 'HOME',
+						'role'         => 'home',
+					),
+					'away_team'   => array(
+						'id'           => 0,
+						'name'         => __( 'Away Team', 'tonys-sportspress-enhancements' ),
+						'short_name'   => __( 'Away', 'tonys-sportspress-enhancements' ),
+						'abbreviation' => 'AWAY',
+						'role'         => 'away',
+					),
 					'venue'       => array(
-						'id'   => 0,
-						'name' => __( 'Sample Field', 'tonys-sportspress-enhancements' ),
-						'slug' => 'sample-field',
+						'id'           => 0,
+						'name'         => __( 'Sample Field', 'tonys-sportspress-enhancements' ),
+						'short_name'   => __( 'Sample', 'tonys-sportspress-enhancements' ),
+						'abbreviation' => 'SF',
+						'slug'         => 'sample-field',
+					),
+					'field'       => array(
+						'id'           => 0,
+						'name'         => __( 'Sample Field', 'tonys-sportspress-enhancements' ),
+						'short_name'   => __( 'Sample', 'tonys-sportspress-enhancements' ),
+						'abbreviation' => 'SF',
+						'slug'         => 'sample-field',
 					),
 				),
 				'changes' => array(
-					'previous' => array(
-						'local_iso'     => $now->format( DATE_ATOM ),
-						'local_display' => wp_date( 'Y-m-d g:i A T', $now->getTimestamp(), wp_timezone() ),
-						'gmt_iso'       => $now->setTimezone( new DateTimeZone( 'UTC' ) )->format( DATE_ATOM ),
-						'timestamp'     => $now->getTimestamp(),
+					'previous' => $this->build_change_snapshot(
+						$this->build_schedule_data( $now->getTimestamp() ),
+						array(
+							'id'           => 0,
+							'name'         => __( 'Old Field', 'tonys-sportspress-enhancements' ),
+							'short_name'   => __( 'Old', 'tonys-sportspress-enhancements' ),
+							'abbreviation' => 'OF',
+							'slug'         => 'old-field',
+						),
+						array(
+							array(
+								'id'           => 0,
+								'name'         => __( 'Old Home', 'tonys-sportspress-enhancements' ),
+								'short_name'   => __( 'Old Home', 'tonys-sportspress-enhancements' ),
+								'abbreviation' => 'OH',
+								'role'         => 'home',
+							),
+							array(
+								'id'           => 0,
+								'name'         => __( 'Away Team', 'tonys-sportspress-enhancements' ),
+								'short_name'   => __( 'Away', 'tonys-sportspress-enhancements' ),
+								'abbreviation' => 'AWAY',
+								'role'         => 'away',
+							),
+						),
+						'TBD'
 					),
-					'current'  => array(
-						'local_iso'     => $next->format( DATE_ATOM ),
-						'local_display' => wp_date( 'Y-m-d g:i A T', $next->getTimestamp(), wp_timezone() ),
-						'gmt_iso'       => $next->setTimezone( new DateTimeZone( 'UTC' ) )->format( DATE_ATOM ),
-						'timestamp'     => $next->getTimestamp(),
+					'current'  => $this->build_change_snapshot(
+						$this->build_schedule_data( $next->getTimestamp() ),
+						array(
+							'id'           => 0,
+							'name'         => __( 'Sample Field', 'tonys-sportspress-enhancements' ),
+							'short_name'   => __( 'Sample', 'tonys-sportspress-enhancements' ),
+							'abbreviation' => 'SF',
+							'slug'         => 'sample-field',
+						),
+						array(
+							array(
+								'id'           => 0,
+								'name'         => __( 'Home Team', 'tonys-sportspress-enhancements' ),
+								'short_name'   => __( 'Home', 'tonys-sportspress-enhancements' ),
+								'abbreviation' => 'HOME',
+								'role'         => 'home',
+							),
+							array(
+								'id'           => 0,
+								'name'         => __( 'Away Team', 'tonys-sportspress-enhancements' ),
+								'short_name'   => __( 'Away', 'tonys-sportspress-enhancements' ),
+								'abbreviation' => 'AWAY',
+								'role'         => 'away',
+							),
+						),
+						'On time'
 					),
 				),
 				'results' => array(
@@ -1226,17 +1627,16 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 
 			if ( 'event_datetime_changed' === $trigger ) {
 				$previous = $schedule;
+				$venue    = $this->get_event_venue( $event_id );
+				$status   = (string) get_post_meta( $event_id, 'sp_status', true );
 				if ( ! empty( $schedule['timestamp'] ) ) {
 					$previous_timestamp           = max( 0, (int) $schedule['timestamp'] - HOUR_IN_SECONDS );
-					$previous['timestamp']        = $previous_timestamp;
-					$previous['local_iso']        = wp_date( DATE_ATOM, $previous_timestamp, wp_timezone() );
-					$previous['local_display']    = wp_date( 'Y-m-d g:i A T', $previous_timestamp, wp_timezone() );
-					$previous['gmt_iso']          = gmdate( DATE_ATOM, $previous_timestamp );
+					$previous                     = $this->build_schedule_data( $previous_timestamp );
 				}
 
 				$changes = array(
-					'previous' => $previous,
-					'current'  => $schedule,
+					'previous' => $this->build_change_snapshot( $previous, $venue, $this->get_event_teams( $event_id ), $status ),
+					'current'  => $this->build_change_snapshot( $schedule, $venue, $this->get_event_teams( $event_id ), $status ),
 				);
 			} elseif ( 'event_results_updated' === $trigger ) {
 				$results = get_post_meta( $event_id, 'sp_results', true );
@@ -1507,7 +1907,8 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		/**
 		 * Render Jinja-style placeholders with a minimal dot-path syntax.
 		 *
-		 * Supports `{{ event.title }}` and `{{ event|tojson }}`.
+		 * Supports `{{ event.title }}`, `{{ event|tojson }}`, `{% if changes.previous.time != changes.current.time %}`,
+		 * and `{{ event.scheduled.timestamp|date("g:i A") }}`.
 		 *
 		 * @param string $template Template body.
 		 * @param array  $context  Template context.
@@ -1516,6 +1917,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		public function render_template( $template, $context ) {
 			$template = (string) $template;
 			$context  = is_array( $context ) ? $context : array();
+			$template = $this->render_template_conditionals( $template, $context );
 
 			return preg_replace_callback(
 				'/\{\{\s*(.+?)\s*\}\}/',
@@ -1525,15 +1927,19 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 					$path       = array_shift( $parts );
 					$value      = $this->resolve_context_path( $context, $path );
 
-					$force_json = false;
 					foreach ( $parts as $filter ) {
-						if ( in_array( strtolower( $filter ), array( 'tojson', 'json' ), true ) ) {
-							$force_json = true;
-						}
-					}
+						$filter_name = strtolower( trim( (string) $filter ) );
 
-					if ( $force_json ) {
-						return (string) wp_json_encode( $value );
+						if ( in_array( $filter_name, array( 'tojson', 'json' ), true ) ) {
+							return (string) wp_json_encode( $value );
+						}
+
+						if ( 0 === strpos( $filter_name, 'date' ) ) {
+							$format = $this->extract_date_filter_format( $filter );
+							if ( '' !== $format ) {
+								$value = $this->format_template_date_value( $value, $format );
+							}
+						}
 					}
 
 					if ( is_array( $value ) || is_object( $value ) ) {
@@ -1551,6 +1957,468 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 					return (string) $value;
 				},
 				$template
+			);
+		}
+
+		/**
+		 * Render simple conditional blocks before placeholder interpolation.
+		 *
+		 * Supports `{% if foo %}...{% endif %}`, `{% if foo == "bar" %}...{% else %}...{% endif %}`,
+		 * `{% if foo != bar %}...{% endif %}`, and simple `or` expressions.
+		 *
+		 * @param string $template Template body.
+		 * @param array  $context  Template context.
+		 * @return string
+		 */
+		private function render_template_conditionals( $template, $context ) {
+			$template = (string) $template;
+			$context  = is_array( $context ) ? $context : array();
+			$pattern  = '/\{%\s*if\s+(.+?)\s*%\}(?:(?!\{%\s*if\b).)*?(?:\{%\s*endif\s*%\})/s';
+			$previous = null;
+
+			while ( $template !== $previous && preg_match( $pattern, $template ) ) {
+				$previous = $template;
+				$template = preg_replace_callback(
+					'/\{%\s*if\s+(.+?)\s*%\}(.*?)(?:\{%\s*else\s*%\}(.*?))?\{%\s*endif\s*%\}/s',
+					function ( $matches ) use ( $context ) {
+						$condition = isset( $matches[1] ) ? trim( (string) $matches[1] ) : '';
+						$when_true = isset( $matches[2] ) ? (string) $matches[2] : '';
+						$when_false = isset( $matches[3] ) ? (string) $matches[3] : '';
+
+						if ( $this->evaluate_template_condition( $condition, $context ) ) {
+							return $when_true;
+						}
+
+						return $when_false;
+					},
+					$template
+				);
+			}
+
+			return $template;
+		}
+
+		/**
+		 * Evaluate a simple template conditional expression.
+		 *
+		 * @param string $condition Condition expression.
+		 * @param array  $context   Template context.
+		 * @return bool
+		 */
+		private function evaluate_template_condition( $condition, $context ) {
+			$condition = trim( (string) $condition );
+			if ( '' === $condition ) {
+				return false;
+			}
+
+			if ( preg_match( '/\s+or\s+/i', $condition ) ) {
+				$parts = preg_split( '/\s+or\s+/i', $condition );
+				if ( is_array( $parts ) ) {
+					foreach ( $parts as $part ) {
+						if ( $this->evaluate_template_condition( $part, $context ) ) {
+							return true;
+						}
+					}
+				}
+
+				return false;
+			}
+
+			if ( preg_match( '/^(.+?)\s*(==|!=)\s*(.+)$/', $condition, $matches ) ) {
+				$left  = $this->resolve_template_condition_operand( isset( $matches[1] ) ? (string) $matches[1] : '', $context );
+				$right = $this->resolve_template_condition_operand( isset( $matches[3] ) ? (string) $matches[3] : '', $context );
+				$operator = isset( $matches[2] ) ? (string) $matches[2] : '==';
+
+				if ( '!=' === $operator ) {
+					return $left !== $right;
+				}
+
+				return $left === $right;
+			}
+
+			return $this->is_truthy_template_value( $this->resolve_template_condition_operand( $condition, $context ) );
+		}
+
+		/**
+		 * Resolve one side of a template conditional.
+		 *
+		 * @param string $operand Operand expression.
+		 * @param array  $context Template context.
+		 * @return mixed
+		 */
+		private function resolve_template_condition_operand( $operand, $context ) {
+			$operand = trim( (string) $operand );
+			if ( preg_match( '/^([\'"])(.*)\1$/s', $operand, $matches ) ) {
+				return isset( $matches[2] ) ? (string) $matches[2] : '';
+			}
+
+			$lower = strtolower( $operand );
+			if ( 'true' === $lower ) {
+				return true;
+			}
+
+			if ( 'false' === $lower ) {
+				return false;
+			}
+
+			if ( 'null' === $lower ) {
+				return null;
+			}
+
+			if ( is_numeric( $operand ) ) {
+				return false !== strpos( $operand, '.' ) ? (float) $operand : (int) $operand;
+			}
+
+			return $this->resolve_context_path( $context, $operand );
+		}
+
+		/**
+		 * Determine truthiness for a template conditional.
+		 *
+		 * @param mixed $value Value to inspect.
+		 * @return bool
+		 */
+		private function is_truthy_template_value( $value ) {
+			if ( is_array( $value ) ) {
+				return ! empty( $value );
+			}
+
+			if ( is_string( $value ) ) {
+				return '' !== trim( $value );
+			}
+
+			return ! empty( $value );
+		}
+
+		/**
+		 * Extract a PHP date format string from a template filter.
+		 *
+		 * Supports `date("g:i A")`, `date('g:i A')`, and `date:g:i A`.
+		 *
+		 * @param string $filter Filter expression.
+		 * @return string
+		 */
+		private function extract_date_filter_format( $filter ) {
+			$filter = trim( (string) $filter );
+
+			if ( preg_match( '/^date\s*\(\s*([\'"])(.*?)\1\s*\)$/i', $filter, $matches ) ) {
+				return isset( $matches[2] ) ? (string) $matches[2] : '';
+			}
+
+			if ( preg_match( '/^date\s*:\s*(.+)$/i', $filter, $matches ) ) {
+				return isset( $matches[1] ) ? trim( (string) $matches[1] ) : '';
+			}
+
+			return '';
+		}
+
+		/**
+		 * Format a template value as a date/time string in the venue timezone.
+		 *
+		 * @param mixed  $value  Template value.
+		 * @param string $format PHP date format string.
+		 * @return string
+		 */
+		private function format_template_date_value( $value, $format ) {
+			$format = (string) $format;
+			if ( '' === $format ) {
+				return '';
+			}
+
+			$timestamp = 0;
+
+			if ( is_numeric( $value ) ) {
+				$timestamp = (int) $value;
+			} elseif ( is_string( $value ) && '' !== trim( $value ) ) {
+				try {
+					$date = new DateTimeImmutable( $value );
+					$timestamp = $date->getTimestamp();
+				} catch ( Exception $exception ) {
+					unset( $exception );
+					return '';
+				}
+			}
+
+			if ( $timestamp <= 0 ) {
+				return '';
+			}
+
+			return wp_date( $format, $timestamp, $this->get_event_timezone() );
+		}
+
+		/**
+		 * Build a normalized before/after snapshot for change notifications.
+		 *
+		 * @param array  $schedule Schedule data.
+		 * @param array  $venue    Venue data.
+		 * @param array  $teams    Team data.
+		 * @param string $status   SportsPress schedule status.
+		 * @return array
+		 */
+		private function build_change_snapshot( $schedule, $venue, $teams = array(), $status = '' ) {
+			$schedule = is_array( $schedule ) ? $schedule : array();
+			$venue    = is_array( $venue ) ? $venue : array();
+			$teams    = $this->normalize_team_data( $teams );
+			$status   = $this->normalize_event_status_key( $status );
+
+			return array_merge(
+				$this->build_schedule_data( isset( $schedule['timestamp'] ) ? (int) $schedule['timestamp'] : 0, isset( $schedule['gmt_iso'] ) ? (string) $schedule['gmt_iso'] : null ),
+				$schedule,
+				array(
+					'status'    => $this->get_event_status_label( $status ),
+					'sp_status' => $status,
+					'venue'     => $this->normalize_venue_data( $venue ),
+					'field'     => $this->normalize_venue_data( $venue ),
+					'teams'     => $teams,
+					'home_team' => isset( $teams[0] ) ? $teams[0] : $this->normalize_single_team_data( array() ),
+					'away_team' => isset( $teams[1] ) ? $teams[1] : $this->normalize_single_team_data( array() ),
+				)
+			);
+		}
+
+		/**
+		 * Normalize venue data for template context usage.
+		 *
+		 * @param array $venue Venue data.
+		 * @return array
+		 */
+		private function normalize_venue_data( $venue ) {
+			return array(
+				'id'           => isset( $venue['id'] ) ? (int) $venue['id'] : 0,
+				'name'         => isset( $venue['name'] ) ? (string) $venue['name'] : '',
+				'short_name'   => isset( $venue['short_name'] ) ? (string) $venue['short_name'] : '',
+				'abbreviation' => isset( $venue['abbreviation'] ) ? (string) $venue['abbreviation'] : '',
+				'slug'         => isset( $venue['slug'] ) ? (string) $venue['slug'] : '',
+			);
+		}
+
+		/**
+		 * Determine whether two venue payloads are effectively the same.
+		 *
+		 * @param array $left  First venue.
+		 * @param array $right Second venue.
+		 * @return bool
+		 */
+		private function venues_match( $left, $right ) {
+			return $this->normalize_venue_data( is_array( $left ) ? $left : array() ) === $this->normalize_venue_data( is_array( $right ) ? $right : array() );
+		}
+
+		/**
+		 * Normalize team data for template context usage.
+		 *
+		 * @param array $teams Team data.
+		 * @return array
+		 */
+		private function normalize_team_data( $teams ) {
+			if ( ! is_array( $teams ) ) {
+				return array();
+			}
+
+			$normalized = array();
+			foreach ( $teams as $team ) {
+				$normalized[] = $this->normalize_single_team_data( is_array( $team ) ? $team : array() );
+			}
+
+			return $normalized;
+		}
+
+		/**
+		 * Normalize a single team payload for template context usage.
+		 *
+		 * @param array $team Team data.
+		 * @return array
+		 */
+		private function normalize_single_team_data( $team ) {
+			return array(
+				'id'           => isset( $team['id'] ) ? (int) $team['id'] : 0,
+				'name'         => isset( $team['name'] ) ? (string) $team['name'] : '',
+				'short_name'   => isset( $team['short_name'] ) ? (string) $team['short_name'] : '',
+				'abbreviation' => isset( $team['abbreviation'] ) ? (string) $team['abbreviation'] : '',
+				'role'         => isset( $team['role'] ) ? (string) $team['role'] : '',
+			);
+		}
+
+		/**
+		 * Determine whether two team lists are effectively the same.
+		 *
+		 * @param array $left  First team list.
+		 * @param array $right Second team list.
+		 * @return bool
+		 */
+		private function teams_match( $left, $right ) {
+			return $this->normalize_team_data( is_array( $left ) ? $left : array() ) === $this->normalize_team_data( is_array( $right ) ? $right : array() );
+		}
+
+		/**
+		 * Get the SportsPress event status label map.
+		 *
+		 * @return array
+		 */
+		private function get_event_status_labels() {
+			return apply_filters(
+				'sportspress_event_statuses',
+				array(
+					'ok'        => esc_attr__( 'On time', 'sportspress' ),
+					'tbd'       => esc_attr__( 'TBD', 'sportspress' ),
+					'postponed' => esc_attr__( 'Postponed', 'sportspress' ),
+					'cancelled' => esc_attr__( 'Canceled', 'sportspress' ),
+				)
+			);
+		}
+
+		/**
+		 * Normalize a SportsPress event status into its stored key.
+		 *
+		 * @param string $status Status key or label.
+		 * @return string
+		 */
+		private function normalize_event_status_key( $status ) {
+			$status = is_string( $status ) ? trim( $status ) : '';
+			if ( '' === $status ) {
+				return 'ok';
+			}
+
+			$lower = strtolower( $status );
+			$map   = $this->get_event_status_labels();
+
+			if ( isset( $map[ $lower ] ) ) {
+				return $lower;
+			}
+
+			foreach ( $map as $key => $label ) {
+				if ( strtolower( wp_strip_all_tags( (string) $label ) ) === $lower ) {
+					return (string) $key;
+				}
+			}
+
+			if ( 'canceled' === $lower ) {
+				return 'cancelled';
+			}
+
+			return sanitize_key( $lower );
+		}
+
+		/**
+		 * Get the display label for a SportsPress event status.
+		 *
+		 * @param string $status Status key or label.
+		 * @return string
+		 */
+		private function get_event_status_label( $status ) {
+			$key      = $this->normalize_event_status_key( $status );
+			$statuses = $this->get_event_status_labels();
+
+			if ( isset( $statuses[ $key ] ) ) {
+				return (string) wp_strip_all_tags( $statuses[ $key ] );
+			}
+
+			return (string) $status;
+		}
+
+		/**
+		 * Build a stable signature for the current schedule state.
+		 *
+		 * @param array  $schedule Schedule data.
+		 * @param array  $venue    Venue data.
+		 * @param array  $teams    Team data.
+		 * @param string $status   SportsPress schedule status.
+		 * @return string
+		 */
+		private function build_schedule_change_signature( $schedule, $venue, $teams, $status = '' ) {
+			$schedule = is_array( $schedule ) ? $schedule : array();
+			$venue    = $this->normalize_venue_data( is_array( $venue ) ? $venue : array() );
+			$teams    = $this->normalize_team_data( $teams );
+			$status   = $this->normalize_event_status_key( $status );
+
+			return md5(
+				wp_json_encode(
+					array(
+						'gmt_iso'   => isset( $schedule['gmt_iso'] ) ? (string) $schedule['gmt_iso'] : '',
+						'local_iso' => isset( $schedule['local_iso'] ) ? (string) $schedule['local_iso'] : '',
+						'status'    => $status,
+						'venue'     => $venue,
+						'teams'     => $teams,
+					)
+				)
+			);
+		}
+
+		/**
+		 * Build the current schedule snapshot for an event.
+		 *
+		 * @param int $post_id Event post id.
+		 * @return array
+		 */
+		private function build_event_schedule_snapshot( $post_id ) {
+			$post     = get_post( $post_id );
+			$schedule = $this->event_schedule_from_post( $post );
+			$venue    = $this->get_event_venue( $post_id );
+			$teams    = $this->get_event_teams( $post_id );
+			$status   = (string) get_post_meta( $post_id, 'sp_status', true );
+
+			return $this->build_change_snapshot( $schedule, $venue, $teams, $status );
+		}
+
+		/**
+		 * Get the stored previous schedule snapshot for an event.
+		 *
+		 * @param int $post_id Event post id.
+		 * @return array
+		 */
+		private function get_stored_schedule_snapshot( $post_id ) {
+			$stored = get_post_meta( $post_id, self::SCHEDULE_SNAPSHOT_META_KEY, true );
+			if ( ! is_array( $stored ) ) {
+				return array();
+			}
+
+			return $this->build_change_snapshot(
+				is_array( $stored ) ? $stored : array(),
+				isset( $stored['venue'] ) && is_array( $stored['venue'] ) ? $stored['venue'] : array(),
+				isset( $stored['teams'] ) && is_array( $stored['teams'] ) ? $stored['teams'] : array(),
+				isset( $stored['status'] ) ? (string) $stored['status'] : ( isset( $stored['sp_status'] ) ? (string) $stored['sp_status'] : '' )
+			);
+		}
+
+		/**
+		 * Store the current schedule snapshot and derived signature.
+		 *
+		 * @param int   $post_id   Event post id.
+		 * @param array $snapshot  Schedule snapshot.
+		 * @return void
+		 */
+		private function store_schedule_snapshot( $post_id, $snapshot ) {
+			$snapshot = is_array( $snapshot ) ? $snapshot : array();
+			update_post_meta( $post_id, self::SCHEDULE_SNAPSHOT_META_KEY, $snapshot );
+			update_post_meta(
+				$post_id,
+				self::SCHEDULE_SIGNATURE_META_KEY,
+				$this->build_schedule_change_signature(
+					$snapshot,
+					isset( $snapshot['venue'] ) && is_array( $snapshot['venue'] ) ? $snapshot['venue'] : array(),
+					isset( $snapshot['teams'] ) && is_array( $snapshot['teams'] ) ? $snapshot['teams'] : array(),
+					isset( $snapshot['status'] ) ? (string) $snapshot['status'] : ( isset( $snapshot['sp_status'] ) ? (string) $snapshot['sp_status'] : '' )
+				)
+			);
+		}
+
+		/**
+		 * Determine whether two stored schedule snapshots are the same.
+		 *
+		 * @param array $left  First snapshot.
+		 * @param array $right Second snapshot.
+		 * @return bool
+		 */
+		private function schedule_snapshots_match( $left, $right ) {
+			return $this->build_schedule_change_signature(
+				is_array( $left ) ? $left : array(),
+				isset( $left['venue'] ) && is_array( $left['venue'] ) ? $left['venue'] : array(),
+				isset( $left['teams'] ) && is_array( $left['teams'] ) ? $left['teams'] : array(),
+				isset( $left['status'] ) ? (string) $left['status'] : ( isset( $left['sp_status'] ) ? (string) $left['sp_status'] : '' )
+			) === $this->build_schedule_change_signature(
+				is_array( $right ) ? $right : array(),
+				isset( $right['venue'] ) && is_array( $right['venue'] ) ? $right['venue'] : array(),
+				isset( $right['teams'] ) && is_array( $right['teams'] ) ? $right['teams'] : array(),
+				isset( $right['status'] ) ? (string) $right['status'] : ( isset( $right['sp_status'] ) ? (string) $right['sp_status'] : '' )
 			);
 		}
 
@@ -1688,19 +2556,113 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		private function get_event_venue( $post_id ) {
 			$terms = get_the_terms( $post_id, 'sp_venue' );
 			if ( is_wp_error( $terms ) || empty( $terms ) ) {
-				return array(
-					'id'   => 0,
-					'name' => '',
-					'slug' => '',
-				);
+				return $this->normalize_venue_data( array() );
 			}
 
 			$venue = reset( $terms );
 
+			return $this->normalize_venue_data(
+				array(
+				'id'           => isset( $venue->term_id ) ? (int) $venue->term_id : 0,
+				'name'         => isset( $venue->name ) ? (string) $venue->name : '',
+				'short_name'   => isset( $venue->term_id ) ? trim( (string) get_term_meta( $venue->term_id, 'tse_short_name', true ) ) : '',
+				'abbreviation' => isset( $venue->term_id ) ? trim( (string) get_term_meta( $venue->term_id, 'tse_abbreviation', true ) ) : '',
+				'slug'         => isset( $venue->slug ) ? (string) $venue->slug : '',
+				)
+			);
+		}
+
+		/**
+		 * Get a venue payload from previous term taxonomy ids.
+		 *
+		 * @param array  $term_taxonomy_ids Previous term taxonomy ids.
+		 * @param string $taxonomy          Taxonomy slug.
+		 * @return array
+		 */
+		private function get_venue_from_term_taxonomy_ids( $term_taxonomy_ids, $taxonomy ) {
+			if ( ! is_array( $term_taxonomy_ids ) || empty( $term_taxonomy_ids ) ) {
+				return $this->normalize_venue_data( array() );
+			}
+
+			$term_taxonomy_ids = array_values( array_filter( array_map( 'intval', $term_taxonomy_ids ) ) );
+			if ( empty( $term_taxonomy_ids ) ) {
+				return $this->normalize_venue_data( array() );
+			}
+
+			$terms = get_terms(
+				array(
+					'taxonomy'   => $taxonomy,
+					'hide_empty' => false,
+					'fields'     => 'all',
+					'meta_query' => array(),
+				)
+			);
+
+			if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+				return $this->normalize_venue_data( array() );
+			}
+
+			foreach ( $terms as $term ) {
+				if ( ! $term instanceof WP_Term || ! isset( $term->term_taxonomy_id ) ) {
+					continue;
+				}
+
+				if ( in_array( (int) $term->term_taxonomy_id, $term_taxonomy_ids, true ) ) {
+					return $this->normalize_venue_data(
+						array(
+							'id'           => isset( $term->term_id ) ? (int) $term->term_id : 0,
+							'name'         => isset( $term->name ) ? (string) $term->name : '',
+							'short_name'   => isset( $term->term_id ) ? trim( (string) get_term_meta( $term->term_id, 'tse_short_name', true ) ) : '',
+							'abbreviation' => isset( $term->term_id ) ? trim( (string) get_term_meta( $term->term_id, 'tse_abbreviation', true ) ) : '',
+							'slug'         => isset( $term->slug ) ? (string) $term->slug : '',
+						)
+					);
+				}
+			}
+
+			return $this->normalize_venue_data( array() );
+		}
+
+		/**
+		 * Get the timezone used for event schedule display.
+		 *
+		 * @return DateTimeZone
+		 */
+		private function get_event_timezone() {
+			return new DateTimeZone( 'America/Chicago' );
+		}
+
+		/**
+		 * Build schedule data for the webhook template context.
+		 *
+		 * @param int         $timestamp Event timestamp.
+		 * @param string|null $gmt_iso   Optional GMT ISO timestamp.
+		 * @return array
+		 */
+		private function build_schedule_data( $timestamp, $gmt_iso = null ) {
+			$timestamp = (int) $timestamp;
+			if ( $timestamp <= 0 ) {
+				return array(
+					'date'          => '',
+					'time'          => '',
+					'timezone'      => '',
+					'local_iso'     => '',
+					'local_display' => '',
+					'gmt_iso'       => '',
+					'timestamp'     => 0,
+				);
+			}
+
+			$timezone = $this->get_event_timezone();
+
 			return array(
-				'id'   => isset( $venue->term_id ) ? (int) $venue->term_id : 0,
-				'name' => isset( $venue->name ) ? (string) $venue->name : '',
-				'slug' => isset( $venue->slug ) ? (string) $venue->slug : '',
+				'date'          => wp_date( 'Y-m-d', $timestamp, $timezone ),
+				'time'          => wp_date( 'g:i A', $timestamp, $timezone ),
+				'timezone'      => wp_date( 'T', $timestamp, $timezone ),
+				'local_iso'     => wp_date( DATE_ATOM, $timestamp, $timezone ),
+				'local_display' => wp_date( 'Y-m-d g:i A T', $timestamp, $timezone ),
+				'gmt_iso'       => is_string( $gmt_iso ) && '' !== $gmt_iso ? $gmt_iso : gmdate( DATE_ATOM, $timestamp ),
+				'timestamp'     => $timestamp,
 			);
 		}
 	}
