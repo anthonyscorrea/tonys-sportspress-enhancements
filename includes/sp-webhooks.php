@@ -2629,7 +2629,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		 * @return DateTimeZone
 		 */
 		private function get_event_timezone() {
-			return new DateTimeZone( 'America/Chicago' );
+			return wp_timezone();
 		}
 
 		/**
