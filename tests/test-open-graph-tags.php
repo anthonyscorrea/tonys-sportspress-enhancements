@@ -136,15 +136,12 @@ class Test_Open_Graph_Tags extends WP_UnitTestCase {
 		$this->assertSame( 'article', $meta['type'] );
 		$this->assertStringContainsString( 'Hawks vs Electrons', $meta['title'] );
 		$this->assertStringContainsString( 'First pitch at one.', $meta['description'] );
-		$this->assertCount( 2, $meta['images'] );
+		$this->assertCount( 1, $meta['images'] );
 		$this->assertSame( '1200', $meta['images'][0]['width'] );
 		$this->assertSame( '628', $meta['images'][0]['height'] );
-		$this->assertSame( '1200', $meta['images'][1]['width'] );
-		$this->assertSame( '1200', $meta['images'][1]['height'] );
 		$this->assertSame( '1200', $meta['image_width'] );
 		$this->assertSame( '628', $meta['image_height'] );
 		$this->assertStringContainsString( '/head-to-head?post=' . $event, $meta['image'] );
-		$this->assertStringContainsString( 'variant=square', $meta['images'][1]['url'] );
 		$this->assertNotEmpty( $meta['url'] );
 	}
 
@@ -260,10 +257,9 @@ class Test_Open_Graph_Tags extends WP_UnitTestCase {
 		$output = ob_get_clean();
 
 		$this->assertStringContainsString( 'og:image:width', $output );
-		$this->assertSame( 2, substr_count( $output, 'property="og:image" content=' ) );
+		$this->assertSame( 1, substr_count( $output, 'property="og:image" content=' ) );
 		$this->assertStringContainsString( 'content="628"', $output );
 		$this->assertStringContainsString( 'content="1200"', $output );
-		$this->assertStringContainsString( 'variant=square', $output );
 		$this->assertStringContainsString( 'Hawks &quot;A&quot;', $output );
 		$this->assertStringNotContainsString( '<B>', $output );
 		$this->assertStringNotContainsString( '<script', $output );

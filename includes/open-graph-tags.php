@@ -49,11 +49,6 @@ function asc_sp_event_open_graph_images( WP_Post $post ) {
 			'width'  => '1200',
 			'height' => '628',
 		),
-		array(
-			'url'    => asc_sp_event_matchup_image_url( $post, 'square' ),
-			'width'  => '1200',
-			'height' => '1200',
-		),
 	);
 }
 

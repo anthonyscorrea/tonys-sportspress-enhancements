@@ -1,7 +1,7 @@
 
 {
   "name": "tonys-sportspress-enhancements",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "main": "Gruntfile.js",
   "author": "YOUR NAME HERE",
   "scripts" : {
