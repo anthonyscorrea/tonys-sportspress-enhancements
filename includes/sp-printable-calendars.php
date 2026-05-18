@@ -153,6 +153,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$vars[] = 'paper';
 			$vars[] = 'autoprint';
 			$vars[] = 'month_pages';
+			$vars[] = 'black_white';
 
 			return $vars;
 		}
@@ -539,6 +540,11 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			echo '<input id="tse-printable-builder-month-pages" type="checkbox" value="1" />';
 			echo esc_html__( 'Print each month on its own page', 'tonys-sportspress-enhancements' );
 			echo '</label>';
+			echo '<br />';
+			echo '<label for="tse-printable-builder-black-white" style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;">';
+			echo '<input id="tse-printable-builder-black-white" type="checkbox" value="1" />';
+			echo esc_html__( 'High-legibility greyscale', 'tonys-sportspress-enhancements' );
+			echo '</label>';
 			echo '</td></tr>';
 
 			echo '</tbody></table>';
@@ -585,6 +591,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				var titleFormat = root.querySelector('#tse-printable-builder-title-format');
 				var autoprint = root.querySelector('#tse-printable-builder-autoprint');
 				var monthPages = root.querySelector('#tse-printable-builder-month-pages');
+				var blackWhite = root.querySelector('#tse-printable-builder-black-white');
 				var output = root.querySelector('#tse-printable-builder-output');
 				var copyButton = root.querySelector('#tse-printable-builder-copy');
 				var openLink = root.querySelector('#tse-printable-builder-open');
@@ -658,12 +665,18 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 						url.searchParams.delete('month_pages');
 					}
 
+					if (blackWhite.checked) {
+						url.searchParams.set('black_white', '1');
+					} else {
+						url.searchParams.delete('black_white');
+					}
+
 					output.value = url.toString();
 					openLink.href = url.toString();
 					openLink.toggleAttribute('disabled', !teamValues.length);
 				}
 
-				[team, season, league, field, paper, teamLabel, fieldLabel, titleFormat, autoprint, monthPages].forEach(function(input){
+				[team, season, league, field, paper, teamLabel, fieldLabel, titleFormat, autoprint, monthPages, blackWhite].forEach(function(input){
 					input.addEventListener('change', buildUrl);
 				});
 
@@ -737,6 +750,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$paper = $this->normalize_paper_size( (string) get_query_var( 'paper' ) );
 			$autoprint = '1' === (string) get_query_var( 'autoprint' );
 			$month_pages = '1' === (string) get_query_var( 'month_pages' );
+			$black_white = '1' === (string) get_query_var( 'black_white' );
 
 			$is_multi_team           = count( $team_ids ) > 1;
 			$primary_team_id         = isset( $team_ids[0] ) ? (int) $team_ids[0] : 0;
@@ -795,7 +809,14 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				echo '<script>window.addEventListener("load",function(){window.print();});</script>';
 			}
 			echo '</head>';
-			echo '<body class="print-preview ' . esc_attr( $paper . ( $month_pages ? ' month-pages' : '' ) ) . '">';
+			$body_classes = array( 'print-preview', $paper );
+			if ( $month_pages ) {
+				$body_classes[] = 'month-pages';
+			}
+			if ( $black_white ) {
+				$body_classes[] = 'black-white';
+			}
+			echo '<body class="' . esc_attr( implode( ' ', $body_classes ) ) . '">';
 
 			$root_vars = array(
 				'--sheet-scale:' . $layout['sheet_scale'],
@@ -925,7 +946,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 * @param string $paper     Paper size.
 		 * @return string
 		 */
-		private function build_url( $team_id, $season_id, $paper, $league_id = 0, $field_id = 0, $month_pages = false, $team_label_mode = 'name', $field_label_mode = '', $title_format = 'selected_first' ) {
+		private function build_url( $team_id, $season_id, $paper, $league_id = 0, $field_id = 0, $month_pages = false, $team_label_mode = 'name', $field_label_mode = '', $title_format = 'selected_first', $black_white = false ) {
 			$paper = $this->normalize_paper_size( $paper );
 			$field_label_mode = '' === $field_label_mode ? $this->get_venue_label_mode() : $field_label_mode;
 
@@ -941,6 +962,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 					'title_format'   => $this->sanitize_title_format( $title_format ),
 					'paper'          => (string) $paper,
 					'month_pages'    => $month_pages ? '1' : '',
+					'black_white'    => $black_white ? '1' : '',
 				),
 				home_url( '/' )
 			);
@@ -2413,7 +2435,9 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$rows = (int) ceil( $count / $columns );
 
 			$font_scale = 1.0;
-			if ( $count >= 3 && $count <= 4 ) {
+			if ( $count == 1 ) {
+				$font_scale = 1.1;
+			} elseif ( $count >= 3 && $count <= 4 ) {
 				$font_scale = 0.9;
 			} elseif ( $count >= 5 && $count <= 6 ) {
 				$font_scale = 0.78;

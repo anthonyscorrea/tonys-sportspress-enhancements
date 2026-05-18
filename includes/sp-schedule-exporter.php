@@ -92,6 +92,7 @@ function tse_sp_schedule_exporter_render_shortcode() {
 	$export_type  = tse_sp_schedule_exporter_resolve_export_type();
 	$subformat    = tse_sp_schedule_exporter_resolve_subformat();
 	$title_format = tse_sp_schedule_exporter_resolve_title_format();
+	$black_white  = tse_sp_schedule_exporter_resolve_black_white();
 
 	if ( empty( $teams ) ) {
 		return '<p>' . esc_html__( 'No SportsPress teams match the selected league and season.', 'tonys-sportspress-enhancements' ) . '</p>';
@@ -191,6 +192,13 @@ function tse_sp_schedule_exporter_render_shortcode() {
 				</label>
 			</div>
 
+			<div style="margin-bottom:16px;">
+				<label for="tse-public-black-white" style="display:inline-flex;align-items:center;gap:6px;">
+					<input id="tse-public-black-white" type="checkbox" name="black_white" value="1" <?php checked( $black_white ); ?> />
+					<strong><?php esc_html_e( 'High-legibility greyscale printable calendar', 'tonys-sportspress-enhancements' ); ?></strong>
+				</label>
+			</div>
+
 		</form>
 
 		<?php tse_sp_schedule_exporter_render_column_picker( 'matchup', 'public', $subformat ); ?>
@@ -206,7 +214,7 @@ function tse_sp_schedule_exporter_render_shortcode() {
 		);
 		$csv_url = tse_sp_event_export_get_feed_url( array_merge( $feed_args, array( 'format' => $subformat ) ), 'csv' );
 		$ics_url = tse_sp_event_export_get_feed_url( $feed_args, 'ics' );
-		$print_url = tse_sp_schedule_exporter_get_printable_url( $team_ids, $season_id, 'letter', $league_id, false, $field_id, false, 'name', 'name', $title_format );
+		$print_url = tse_sp_schedule_exporter_get_printable_url( $team_ids, $season_id, 'letter', $league_id, false, $field_id, false, 'name', 'name', $title_format, $black_white );
 		$current_url = tse_sp_schedule_exporter_get_output_url( $export_type, $csv_url, $ics_url, $print_url );
 		?>
 		<div style="display:flex;align-items:center;gap:8px;max-width:100%;margin-top:16px;">
@@ -599,6 +607,15 @@ function tse_sp_schedule_exporter_resolve_title_format_value( $value ) {
 }
 
 /**
+ * Resolve whether printable URLs should use black-and-white styling.
+ *
+ * @return bool
+ */
+function tse_sp_schedule_exporter_resolve_black_white() {
+	return isset( $_GET['black_white'] ) && '1' === (string) wp_unslash( $_GET['black_white'] );
+}
+
+/**
  * Get current output URL for the selected export type.
  *
  * @param string $export_type Export type.
@@ -758,9 +775,10 @@ function tse_sp_schedule_exporter_get_primary_venue( $event_id ) {
  * @param string $team_label_mode  Team label mode.
  * @param string $field_label_mode Field label mode.
  * @param string $title_format     Title format.
+ * @param bool   $black_white      Whether to use black-and-white printable styling.
  * @return string
  */
-function tse_sp_schedule_exporter_get_printable_url( $team_id, $season_id, $paper, $league_id = 0, $autoprint = false, $field_id = 0, $month_pages = false, $team_label_mode = 'name', $field_label_mode = 'name', $title_format = 'selected_first' ) {
+function tse_sp_schedule_exporter_get_printable_url( $team_id, $season_id, $paper, $league_id = 0, $autoprint = false, $field_id = 0, $month_pages = false, $team_label_mode = 'name', $field_label_mode = 'name', $title_format = 'selected_first', $black_white = false ) {
 	$team_ids = is_array( $team_id ) ? array_values( array_filter( array_map( 'absint', $team_id ) ) ) : array( absint( $team_id ) );
 
 	return add_query_arg(
@@ -776,6 +794,7 @@ function tse_sp_schedule_exporter_get_printable_url( $team_id, $season_id, $pape
 			'paper'                                          => $paper,
 			'autoprint'                                      => $autoprint ? '1' : '',
 			'month_pages'                                    => $month_pages ? '1' : '',
+			'black_white'                                    => $black_white ? '1' : '',
 		),
 		home_url( '/' )
 	);
@@ -829,6 +848,7 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 		var titleFormat = form.querySelector('[name="title_format"]');
 		var field = form.querySelector('[name="field_id"]');
 		var monthPages = form.querySelector('[name="month_pages"]');
+		var blackWhite = form.querySelector('[name="black_white"]');
 		var outputUrl = scope.querySelector('.tse-output-url');
 		var openButton = scope.querySelector('.tse-open-link');
 		var iosButton = scope.querySelector('.tse-ics-ios-link');
@@ -899,6 +919,11 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 				printUrl.searchParams.set('month_pages', '1');
 			} else {
 				printUrl.searchParams.delete('month_pages');
+			}
+			if (blackWhite && blackWhite.checked) {
+				printUrl.searchParams.set('black_white', '1');
+			} else {
+				printUrl.searchParams.delete('black_white');
 			}
 			printUrl.searchParams.set('paper', 'letter');
 		}

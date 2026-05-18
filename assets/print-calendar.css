@@ -132,11 +132,12 @@ body.month-pages .day-num {
 
 body.month-pages .event-name {
 	font-size: calc(13px * var(--month-font-scale));
+	line-height: 0.98;
 }
 
 body.month-pages .matchup-name {
 	font-size: calc(13px * var(--month-font-scale));
-	line-height: 1.05;
+	line-height: 0.92;
 }
 
 body.month-pages .event-time {
@@ -468,6 +469,8 @@ body.month-pages .day .day-num {
 	hyphens: none;
 	line-height: 1.05;
 	font-weight: 700;
+	font-stretch: condensed;
+	font-variation-settings: "wdth" 42, "wght" 700;
 	opacity: 0.85;
 }
 
@@ -487,6 +490,7 @@ body.month-pages .day .day-num {
 	padding: 0;
 	font-size: calc(8.5px * var(--month-font-scale));
 	line-height: 0.98;
+	font-variation-settings: "wdth" 36, "wght" 800;
 	opacity: 1;
 }
 
@@ -503,6 +507,7 @@ body.month-pages .day .day-num {
 	text-align: center;
 	text-overflow: clip;
 	white-space: nowrap;
+	font-stretch: condensed;
 }
 
 .ha-flag {
@@ -563,6 +568,8 @@ body.month-pages .day .day-num {
 	max-width: 100%;
 	font-size: calc(12px * var(--month-font-scale));
 	font-weight: 800;
+	font-stretch: condensed;
+	font-variation-settings: "wdth" 56, "wght" 800;
 	line-height: 1;
 	text-transform: uppercase;
 	text-align: center;
@@ -584,6 +591,8 @@ body.month-pages .day .day-num {
 	max-width: 100%;
 	font-size: calc(8px * var(--month-font-scale));
 	font-weight: 700;
+	font-stretch: condensed;
+	font-variation-settings: "wdth" 50, "wght" 700;
 	line-height: 1;
 	text-align: center;
 	text-transform: uppercase;
@@ -674,6 +683,100 @@ body.month-pages .day .day-num {
 	display: block;
 	border: 1px solid var(--pc-border);
 	background: #fff;
+}
+
+body.black-white .header,
+body.black-white .month-title,
+body.black-white .dow span,
+body.black-white .day,
+body.black-white .event,
+body.black-white .empty,
+body.black-white .footer-meta,
+body.black-white .footer-qr-image {
+	border-color: #2f3337 !important;
+}
+
+body.black-white .month-title,
+body.black-white .ha-flag {
+	background: #1f2328 !important;
+	color: #fff !important;
+	text-shadow: none !important;
+}
+
+body.black-white .dow span,
+body.black-white .day,
+body.black-white .day.muted,
+body.black-white .day.no-events,
+body.black-white .day.has-matchups,
+body.black-white .empty,
+body.black-white .legend-item,
+body.black-white .event.a .ha-flag {
+	background: #f7f7f7 !important;
+	color: #111 !important;
+	text-shadow: none !important;
+}
+
+body.black-white .dow span {
+	background: #e4e7eb !important;
+}
+
+body.black-white .day,
+body.black-white .day.has-matchups,
+body.black-white .legend-item {
+	background: #fff !important;
+}
+
+body.black-white .event,
+body.black-white .event.h,
+body.black-white .event.a,
+body.black-white .event.matchup {
+	background: #e4e7eb !important;
+	color: #111 !important;
+	text-shadow: none !important;
+}
+
+body.black-white .day.muted,
+body.black-white .day.no-events {
+	background: #f2f3f5 !important;
+	color: #4b5563 !important;
+}
+
+body.black-white .month-title,
+body.black-white .dow span,
+body.black-white .day,
+body.black-white .event {
+	border: 1px solid #2f3337;
+}
+
+body.black-white .day-num,
+body.black-white .day.has-events .day-num,
+body.black-white .day.has-matchups .day-num,
+body.black-white.month-pages .day .day-num {
+	background: #fff !important;
+	color: #111 !important;
+	box-shadow: 0 0 0 1px #2f3337 !important;
+	text-shadow: none !important;
+}
+
+body.black-white .ha-flag,
+body.black-white .event.a .ha-flag {
+	box-shadow: 0 0 0 1px #2f3337;
+}
+
+body.black-white .event-name,
+body.black-white .event-time,
+body.black-white .event-venue,
+body.black-white .matchup-vs,
+body.black-white .footer-qr-label,
+body.black-white .footer-qr-link,
+body.black-white .meta {
+	color: #111 !important;
+	opacity: 1 !important;
+}
+
+body.black-white .meta,
+body.black-white .footer-qr-label {
+	color: #374151 !important;
 }
 
 @media print {

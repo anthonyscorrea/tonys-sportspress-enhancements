@@ -130,6 +130,18 @@ class Test_SP_Schedule_Exporter extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Printable URLs should carry black-and-white mode when requested.
+	 */
+	public function test_printable_url_accepts_black_white_mode() {
+		$url   = tse_sp_schedule_exporter_get_printable_url( 12, 56, 'letter', 78, false, 90, false, 'name', 'name', 'selected_first', true );
+		$query = array();
+
+		wp_parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $query );
+
+		$this->assertSame( '1', $query['black_white'] );
+	}
+
+	/**
 	 * Single-team printable entries should keep the existing opponent perspective.
 	 */
 	public function test_printable_single_team_entries_keep_opponent_perspective() {
