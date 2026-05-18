@@ -112,6 +112,7 @@ class Test_SP_Schedule_Exporter extends WP_UnitTestCase {
 		$this->assertSame( '90', $query['sp_field'] );
 		$this->assertSame( 'name', $query['team_label'] );
 		$this->assertSame( 'name', $query['field_label'] );
+		$this->assertSame( 'selected_first', $query['title_format'] );
 		$this->assertSame( '1', $query['month_pages'] );
 	}
 
@@ -172,9 +173,94 @@ class Test_SP_Schedule_Exporter extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Multi-team printable entries should return one matchup row per event.
+	 * Team CSV layout should support multiple selected teams with away-first context.
 	 */
-	public function test_printable_multi_team_entries_are_matchup_rows() {
+	public function test_team_export_multiple_selected_teams_uses_away_team_first() {
+		$home_id = $this->create_team( 'Home Team' );
+		$away_id = $this->create_team( 'Away Team' );
+		$this->create_event( $home_id, $away_id );
+
+		$events = tse_sp_event_export_get_events(
+			array(
+				'team_ids' => array( $home_id, $away_id ),
+			)
+		);
+
+		$this->assertCount( 1, $events );
+		$this->assertSame( 'Away Team', $events[0]['team_name'] );
+		$this->assertSame( 'Away Team at Home Team', $events[0]['title'] );
+		$this->assertSame( 'at', $events[0]['separator'] );
+		$this->assertSame( 'Home Team', $events[0]['opponent_name'] );
+		$this->assertSame( 'Away', $events[0]['location_flag'] );
+	}
+
+	/**
+	 * Team CSV layout should use vs when the selected team is home.
+	 */
+	public function test_team_export_home_selected_team_uses_vs_separator() {
+		$home_id = $this->create_team( 'Home Team' );
+		$away_id = $this->create_team( 'Away Team' );
+		$this->create_event( $home_id, $away_id );
+
+		$events = tse_sp_event_export_get_events(
+			array(
+				'team_ids' => array( $home_id ),
+			)
+		);
+
+		$this->assertCount( 1, $events );
+		$this->assertSame( 'Home Team', $events[0]['team_name'] );
+		$this->assertSame( 'Away Team', $events[0]['title'] );
+		$this->assertSame( 'vs', $events[0]['separator'] );
+		$this->assertSame( 'Away Team', $events[0]['opponent_name'] );
+		$this->assertSame( 'Home', $events[0]['location_flag'] );
+	}
+
+	/**
+	 * Team CSV layout should use at when the selected team is away.
+	 */
+	public function test_team_export_away_selected_team_uses_at_separator() {
+		$home_id = $this->create_team( 'Home Team' );
+		$away_id = $this->create_team( 'Away Team' );
+		$this->create_event( $home_id, $away_id );
+
+		$events = tse_sp_event_export_get_events(
+			array(
+				'team_ids' => array( $away_id ),
+			)
+		);
+
+		$this->assertCount( 1, $events );
+		$this->assertSame( 'Away Team', $events[0]['team_name'] );
+		$this->assertSame( 'Home Team', $events[0]['title'] );
+		$this->assertSame( 'at', $events[0]['separator'] );
+		$this->assertSame( 'Home Team', $events[0]['opponent_name'] );
+		$this->assertSame( 'Away', $events[0]['location_flag'] );
+	}
+
+	/**
+	 * Matchup title format should ignore selected-team perspective.
+	 */
+	public function test_team_export_matchup_title_format_uses_away_at_home() {
+		$home_id = $this->create_team( 'Home Team' );
+		$away_id = $this->create_team( 'Away Team' );
+		$this->create_event( $home_id, $away_id );
+
+		$events = tse_sp_event_export_get_events(
+			array(
+				'team_ids'      => array( $home_id ),
+				'title_format'  => 'matchup',
+			)
+		);
+
+		$this->assertCount( 1, $events );
+		$this->assertSame( 'Away Team at Home Team', $events[0]['title'] );
+	}
+
+	/**
+	 * Multi-team printable entries should use selected-team-first titles by default.
+	 */
+	public function test_printable_multi_team_entries_use_selected_first_titles() {
 		$home_id  = $this->create_team( 'Home Team' );
 		$away_id  = $this->create_team( 'Away Team' );
 		$venue_id = self::factory()->term->create( array( 'taxonomy' => 'sp_venue', 'name' => 'North Field' ) );
@@ -187,9 +273,10 @@ class Test_SP_Schedule_Exporter extends WP_UnitTestCase {
 		$entries = $method->invoke( $printable, array( $home_id, $away_id ), 0, 0, array() );
 
 		$this->assertCount( 1, $entries );
-		$this->assertTrue( $entries[0]['is_matchup'] );
-		$this->assertSame( 'Away Team', $entries[0]['away_team_name'] );
-		$this->assertSame( 'Home Team', $entries[0]['home_team_name'] );
+		$this->assertFalse( $entries[0]['is_matchup'] );
+		$this->assertSame( 'Away Team', $entries[0]['title_team_name'] );
+		$this->assertSame( 'at', $entries[0]['title_separator'] );
+		$this->assertSame( 'Home Team', $entries[0]['title_opponent_name'] );
 	}
 
 	/**

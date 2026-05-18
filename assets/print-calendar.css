@@ -332,7 +332,7 @@ body.month-pages .event.matchup .event-venue {
 	position: absolute;
 	top: var(--corner-badge-offset);
 	left: var(--corner-badge-offset);
-	z-index: 4;
+	z-index: 20;
 	width: var(--corner-badge-size);
 	height: var(--corner-badge-size);
 	display: flex;
@@ -354,6 +354,15 @@ body.month-pages .event.matchup .event-venue {
 	border: 1px solid var(--pc-border);
 }
 
+.day.has-matchups .day-num {
+	position: absolute;
+	z-index: 20;
+	background: #fff;
+	color: var(--team-ink, #111) !important;
+	text-shadow: none !important;
+	box-shadow: 0 0 0 1px var(--pc-border);
+}
+
 body.month-pages .day .day-num {
 	top: 1px;
 	left: 1px;
@@ -366,6 +375,8 @@ body.month-pages .day .day-num {
 }
 
 .events-stack {
+	position: relative;
+	z-index: 1;
 	height: 100%;
 	display: grid;
 	grid-template-rows: repeat(var(--event-count), minmax(0, 1fr));
@@ -375,7 +386,7 @@ body.month-pages .day .day-num {
 	box-sizing: border-box;
 	grid-template-rows: repeat(var(--event-count), minmax(0, 1fr));
 	gap: 2px;
-	padding: calc(var(--corner-badge-size) + 5px) 2px 2px;
+	padding: 2px;
 }
 
 .event {

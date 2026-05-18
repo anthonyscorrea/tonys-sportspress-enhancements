@@ -91,9 +91,7 @@ function tse_sp_schedule_exporter_render_shortcode() {
 	$field_id  = tse_sp_schedule_exporter_resolve_field_id( $fields );
 	$export_type = tse_sp_schedule_exporter_resolve_export_type();
 	$subformat   = tse_sp_schedule_exporter_resolve_subformat();
-	if ( 'team' === $subformat && count( $team_ids ) > 1 ) {
-		$subformat = 'matchup';
-	}
+	$title_format = tse_sp_schedule_exporter_resolve_title_format();
 
 	if ( empty( $teams ) ) {
 		return '<p>' . esc_html__( 'No SportsPress teams match the selected league and season.', 'tonys-sportspress-enhancements' ) . '</p>';
@@ -118,6 +116,15 @@ function tse_sp_schedule_exporter_render_shortcode() {
 				<p class="description"><?php esc_html_e( 'CSV builds a feed URL, iCal Link builds a subscription URL, and Printable opens the printable page.', 'tonys-sportspress-enhancements' ); ?></p>
 			</div>
 
+			<div data-title-format-wrap="1" style="margin-bottom:16px;">
+				<label for="tse-public-title-format"><strong><?php esc_html_e( 'Title Format', 'tonys-sportspress-enhancements' ); ?></strong></label><br />
+				<select id="tse-public-title-format" name="title_format">
+					<option value="selected_first" <?php selected( $title_format, 'selected_first' ); ?>><?php esc_html_e( 'Selected Teams First', 'tonys-sportspress-enhancements' ); ?></option>
+					<option value="matchup" <?php selected( $title_format, 'matchup' ); ?>><?php esc_html_e( 'Matchup', 'tonys-sportspress-enhancements' ); ?></option>
+				</select>
+				<p class="description"><?php esc_html_e( 'Selected Teams First shows only the opponent when one team is selected; Matchup always shows away at home.', 'tonys-sportspress-enhancements' ); ?></p>
+			</div>
+
 			<div data-subformat-wrap="1" style="margin-bottom:16px;">
 				<label for="tse-public-subformat"><strong><?php esc_html_e( 'CSV Layout', 'tonys-sportspress-enhancements' ); ?></strong></label><br />
 				<select id="tse-public-subformat" name="subformat">
@@ -127,7 +134,7 @@ function tse_sp_schedule_exporter_render_shortcode() {
 						</option>
 					<?php endforeach; ?>
 				</select>
-				<p class="description"><?php esc_html_e( 'Matchup is away vs home. Team is opponent-based and requires one specific team.', 'tonys-sportspress-enhancements' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Matchup is away vs home. Team puts a selected team first with vs or at as the separator.', 'tonys-sportspress-enhancements' ); ?></p>
 			</div>
 
 			<div style="margin-bottom:16px;">
@@ -162,7 +169,7 @@ function tse_sp_schedule_exporter_render_shortcode() {
 						</option>
 					<?php endforeach; ?>
 				</select>
-				<p class="description"><?php esc_html_e( 'Select one or more teams. Multiple teams use the matchup CSV layout and a combined printable schedule.', 'tonys-sportspress-enhancements' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Select one or more teams. Team layout keeps one selected team first for each game.', 'tonys-sportspress-enhancements' ); ?></p>
 			</div>
 
 			<div style="margin-bottom:16px;">
@@ -190,9 +197,9 @@ function tse_sp_schedule_exporter_render_shortcode() {
 		<?php tse_sp_schedule_exporter_render_column_picker( 'team', 'public', $subformat ); ?>
 
 		<?php
-		$csv_url = tse_sp_event_export_get_feed_url( array( 'team_id' => $team_ids, 'season_id' => $season_id, 'league_id' => $league_id, 'field_id' => $field_id, 'format' => $subformat ), 'csv' );
-		$ics_url = tse_sp_event_export_get_feed_url( array( 'team_id' => $team_ids, 'season_id' => $season_id, 'league_id' => $league_id, 'field_id' => $field_id ), 'ics' );
-		$print_url = tse_sp_schedule_exporter_get_printable_url( $team_ids, $season_id, 'letter', $league_id, false, $field_id );
+		$csv_url = tse_sp_event_export_get_feed_url( array( 'team_id' => $team_ids, 'season_id' => $season_id, 'league_id' => $league_id, 'field_id' => $field_id, 'format' => $subformat, 'title_format' => $title_format ), 'csv' );
+		$ics_url = tse_sp_event_export_get_feed_url( array( 'team_id' => $team_ids, 'season_id' => $season_id, 'league_id' => $league_id, 'field_id' => $field_id, 'title_format' => $title_format ), 'ics' );
+		$print_url = tse_sp_schedule_exporter_get_printable_url( $team_ids, $season_id, 'letter', $league_id, false, $field_id, false, 'name', 'name', $title_format );
 		$current_url = tse_sp_schedule_exporter_get_output_url( $export_type, $csv_url, $ics_url, $print_url );
 		?>
 		<div style="display:flex;align-items:center;gap:8px;max-width:100%;margin-top:16px;">
@@ -562,6 +569,29 @@ function tse_sp_schedule_exporter_resolve_subformat() {
 }
 
 /**
+ * Resolve selected title format.
+ *
+ * @return string
+ */
+function tse_sp_schedule_exporter_resolve_title_format() {
+	$requested = isset( $_GET['title_format'] ) ? sanitize_key( wp_unslash( $_GET['title_format'] ) ) : 'selected_first';
+
+	return tse_sp_schedule_exporter_resolve_title_format_value( $requested );
+}
+
+/**
+ * Normalize a title format value.
+ *
+ * @param string $value Raw value.
+ * @return string
+ */
+function tse_sp_schedule_exporter_resolve_title_format_value( $value ) {
+	$value = sanitize_key( (string) $value );
+
+	return in_array( $value, array( 'selected_first', 'matchup' ), true ) ? $value : 'selected_first';
+}
+
+/**
  * Get current output URL for the selected export type.
  *
  * @param string $export_type Export type.
@@ -720,9 +750,10 @@ function tse_sp_schedule_exporter_get_primary_venue( $event_id ) {
  * @param int    $league_id League ID.
  * @param string $team_label_mode  Team label mode.
  * @param string $field_label_mode Field label mode.
+ * @param string $title_format     Title format.
  * @return string
  */
-function tse_sp_schedule_exporter_get_printable_url( $team_id, $season_id, $paper, $league_id = 0, $autoprint = false, $field_id = 0, $month_pages = false, $team_label_mode = 'name', $field_label_mode = 'name' ) {
+function tse_sp_schedule_exporter_get_printable_url( $team_id, $season_id, $paper, $league_id = 0, $autoprint = false, $field_id = 0, $month_pages = false, $team_label_mode = 'name', $field_label_mode = 'name', $title_format = 'selected_first' ) {
 	$team_ids = is_array( $team_id ) ? array_values( array_filter( array_map( 'absint', $team_id ) ) ) : array( absint( $team_id ) );
 
 	return add_query_arg(
@@ -734,6 +765,7 @@ function tse_sp_schedule_exporter_get_printable_url( $team_id, $season_id, $pape
 			'sp_field'                                       => $field_id > 0 ? (string) absint( $field_id ) : '',
 			'team_label'                                     => sanitize_key( (string) $team_label_mode ),
 			'field_label'                                    => sanitize_key( (string) $field_label_mode ),
+			'title_format'                                   => tse_sp_schedule_exporter_resolve_title_format_value( $title_format ),
 			'paper'                                          => $paper,
 			'autoprint'                                      => $autoprint ? '1' : '',
 			'month_pages'                                    => $month_pages ? '1' : '',
@@ -787,6 +819,7 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 		var team = form.querySelector('[name="team_id[]"], [name="team_id"]');
 		var exportType = form.querySelector('[name="export_type"]');
 		var subformat = form.querySelector('[name="subformat"]');
+		var titleFormat = form.querySelector('[name="title_format"]');
 		var field = form.querySelector('[name="field_id"]');
 		var monthPages = form.querySelector('[name="month_pages"]');
 		var outputUrl = scope.querySelector('.tse-output-url');
@@ -806,12 +839,6 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 		var teamValue = teamValues.length ? teamValues.join(',') : '0';
 		var activeSubformat = subformat ? (subformat.value || 'matchup') : 'matchup';
 		var selectedExportType = exportType ? (exportType.value || 'csv') : 'csv';
-		if (teamValues.length > 1 && activeSubformat === 'team') {
-			activeSubformat = 'matchup';
-			if (subformat) {
-				subformat.value = 'matchup';
-			}
-		}
 
 		scope.querySelectorAll('[data-column-group]').forEach(function(group){
 			var visible = selectedExportType === 'csv' && group.getAttribute('data-column-group') === activeSubformat;
@@ -833,6 +860,7 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 			if (season) csvUrl.searchParams.set('season_id', season.value || '0');
 			if (team) csvUrl.searchParams.set('team_id', teamValue);
 			if (field) csvUrl.searchParams.set('field_id', field.value || '0');
+			if (titleFormat) csvUrl.searchParams.set('title_format', titleFormat.value || 'selected_first');
 			csvUrl.searchParams.set('format', activeSubformat);
 			var columns = Array.prototype.slice.call(scope.querySelectorAll('[data-columns-format="' + activeSubformat + '"]:checked')).map(function(input){
 				return input.value;
@@ -849,6 +877,7 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 			if (season) icsUrl.searchParams.set('season_id', season.value || '0');
 			if (team) icsUrl.searchParams.set('team_id', teamValue);
 			if (field) icsUrl.searchParams.set('field_id', field.value || '0');
+			if (titleFormat) icsUrl.searchParams.set('title_format', titleFormat.value || 'selected_first');
 			icsUrl.searchParams.delete('format');
 			icsUrl.searchParams.delete('columns');
 		}
@@ -858,6 +887,7 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 			if (season) printUrl.searchParams.set('sp_season', season.value || '0');
 			if (team) printUrl.searchParams.set('sp_team', teamValue);
 			if (field) printUrl.searchParams.set('sp_field', field.value || '0');
+			if (titleFormat) printUrl.searchParams.set('title_format', titleFormat.value || 'selected_first');
 			if (monthPages && monthPages.checked) {
 				printUrl.searchParams.set('month_pages', '1');
 			} else {
@@ -884,7 +914,7 @@ function tse_sp_schedule_exporter_render_link_sync_script( $echo = false ) {
 			}
 		} else if (selectedExportType === 'csv' && activeSubformat === 'team' && teamValue === '0') {
 			disabled = true;
-			note = 'CSV team layout requires one selected team.';
+			note = 'CSV team layout requires at least one selected team.';
 		}
 
 		if (outputUrl) {
