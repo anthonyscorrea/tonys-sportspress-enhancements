@@ -27,10 +27,7 @@ body {
 
 .print-shell {
 	margin: 0;
-	width: calc(100% / var(--sheet-scale));
 	background: #fff;
-	transform-origin: top left;
-	transform: scale(var(--sheet-scale));
 }
 
 .print-page {
@@ -48,7 +45,10 @@ body {
 	}
 
 	body.print-preview .print-shell {
+		flex: 0 0 auto;
 		box-shadow: 0 10px 30px rgba(17, 24, 39, 0.2);
+		transform-origin: top left;
+		transform: scale(var(--sheet-scale));
 	}
 
 	body.print-preview .print-shell.letter {
@@ -59,6 +59,103 @@ body {
 	body.print-preview .print-shell.ledger {
 		width: 11in;
 		min-height: 17in;
+	}
+
+	body.print-preview.month-pages {
+		display: block;
+		overflow-x: auto;
+	}
+
+	body.print-preview.month-pages .print-shell,
+	body.print-preview.month-pages .print-shell.letter,
+	body.print-preview.month-pages .print-shell.ledger {
+		width: auto;
+		min-height: auto;
+		background: transparent;
+		box-shadow: none;
+		transform: none;
+	}
+
+	body.print-preview.month-pages .print-page {
+		padding: 0;
+	}
+
+	body.print-preview.month-pages .month-page {
+		box-sizing: border-box;
+		width: 8.5in;
+		min-height: 11in;
+		margin-right: auto;
+		margin-left: auto;
+		padding: var(--pc-page-padding);
+		background: #fff;
+		box-shadow: 0 10px 30px rgba(17, 24, 39, 0.2);
+	}
+
+	body.print-preview.month-pages.ledger .month-page {
+		width: 11in;
+		min-height: 17in;
+	}
+
+	body.print-preview.month-pages .month-page + .month-page {
+		margin-top: 24px;
+	}
+
+	body.print-preview.month-pages .month-page .header {
+		margin-bottom: 24px;
+	}
+
+	body.print-preview.month-pages .month-page .footer-meta {
+		margin-top: 24px;
+	}
+
+	body.print-preview.month-pages .sheet-grid {
+		display: block;
+	}
+
+body.print-preview.month-pages .month {
+	width: 100%;
+}
+
+body.month-pages .month-title {
+	font-size: calc(26px * var(--month-font-scale));
+	padding: 4px;
+}
+
+body.month-pages .dow span {
+	font-size: calc(12px * var(--month-font-scale));
+	padding: 4px 2px;
+}
+
+body.month-pages .day-num {
+	font-size: calc(14px * var(--month-font-scale));
+}
+
+body.month-pages .event-name {
+	font-size: calc(13px * var(--month-font-scale));
+}
+
+body.month-pages .matchup-name {
+	font-size: calc(13px * var(--month-font-scale));
+	line-height: 1.05;
+}
+
+body.month-pages .event-time {
+	font-size: calc(14px * var(--month-font-scale));
+}
+
+body.month-pages .event.matchup .event-time {
+	font-size: calc(11px * var(--month-font-scale));
+}
+
+body.month-pages .event.matchup .event-venue {
+	font-size: calc(10px * var(--month-font-scale));
+}
+}
+
+@media screen and (max-width: 900px) {
+	body.print-preview {
+		justify-content: flex-start;
+		overflow-x: auto;
 	}
 }
 
@@ -252,10 +349,33 @@ body {
 	color: var(--day-num-color, #fff);
 }
 
+.day.has-matchups {
+	background: #fff;
+	border: 1px solid var(--pc-border);
+}
+
+body.month-pages .day .day-num {
+	top: 1px;
+	left: 1px;
+	width: var(--corner-badge-size);
+	height: var(--corner-badge-size);
+	border-radius: 0;
+	background: #fff;
+	color: var(--team-ink, #111);
+	text-shadow: none;
+}
+
 .events-stack {
 	height: 100%;
 	display: grid;
 	grid-template-rows: repeat(var(--event-count), minmax(0, 1fr));
+}
+
+.day.has-matchups .events-stack {
+	box-sizing: border-box;
+	grid-template-rows: repeat(var(--event-count), minmax(0, 1fr));
+	gap: 2px;
+	padding: calc(var(--corner-badge-size) + 5px) 2px 2px;
 }
 
 .event {
@@ -275,6 +395,17 @@ body {
 	--event-bg: var(--team-link-color, var(--team-secondary, #8b3f1f));
 }
 
+.event.matchup {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr) auto;
+	gap: 1px;
+	min-height: 0;
+	padding: 2px 3px;
+	border-radius: 2px;
+	overflow: hidden;
+}
+
 .event-center {
 	position: absolute;
 	top: var(--event-top-band);
@@ -291,6 +422,17 @@ body {
 	font-weight: 700;
 	line-height: 1;
 	text-align: center;
+}
+
+.event.matchup .event-center {
+	position: relative;
+	top: auto;
+	left: auto;
+	right: auto;
+	bottom: auto;
+	min-height: 0;
+	align-items: center;
+	justify-content: center;
 }
 
 .event-center img {
@@ -322,8 +464,34 @@ body {
 	font-family: var(--pc-font-display);
 	font-weight: 700;
 	font-variation-settings: "wdth" 30, "wght" 700;
-	letter-spacing: -0.01em;
 	text-transform: uppercase;
+}
+
+.matchup-name {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0;
+	padding: 0;
+	font-size: calc(8.5px * var(--month-font-scale));
+	line-height: 0.98;
+	opacity: 1;
+}
+
+.matchup-vs {
+	font-size: 0.66em;
+	font-weight: 900;
+	opacity: 0.78;
+}
+
+.matchup-team {
+	display: block;
+	width: 100%;
+	overflow: hidden;
+	text-align: center;
+	text-overflow: clip;
+	white-space: nowrap;
 }
 
 .ha-flag {
@@ -341,7 +509,7 @@ body {
 	font-weight: 900;
 	font-variation-settings: "wdth" 84, "wght" 900;
 	line-height: 1;
-	letter-spacing: -0.01em;
+	letter-spacing: 0;
 	background: #111;
 	color: #fff;
 }
@@ -366,6 +534,19 @@ body {
 	overflow: hidden;
 }
 
+.event.matchup .event-meta {
+	position: relative;
+	left: auto;
+	right: auto;
+	bottom: auto;
+	display: grid;
+	grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+	align-items: center;
+	justify-content: center;
+	column-gap: 3px;
+	padding: 0;
+}
+
 .event-time {
 	order: 1;
 	max-width: 100%;
@@ -381,6 +562,12 @@ body {
 	opacity: 0.95;
 }
 
+.event.matchup .event-time {
+	min-width: 0;
+	font-size: calc(7.5px * var(--month-font-scale));
+	font-weight: 900;
+}
+
 .event-venue {
 	order: 2;
 	max-width: 100%;
@@ -393,6 +580,12 @@ body {
 	overflow: hidden;
 	text-overflow: clip;
 	opacity: 0.88;
+}
+
+.event.matchup .event-venue {
+	min-width: 0;
+	font-size: calc(7px * var(--month-font-scale));
+	text-align: left;
 }
 
 .empty {
@@ -487,6 +680,7 @@ body {
 		width: auto;
 		min-height: auto;
 		box-shadow: none;
+		transform: none;
 	}
 
 	.print-page {
@@ -499,5 +693,28 @@ body {
 
 	.title {
 		font-size: calc(26px * var(--month-font-scale));
+	}
+
+	body.month-pages .sheet-grid {
+		display: block;
+	}
+
+	body.month-pages .month-page {
+		break-after: page;
+		page-break-after: always;
+	}
+
+	body.month-pages .month-page:last-child {
+		break-after: auto;
+		page-break-after: auto;
+	}
+
+	body.month-pages .month {
+		width: 100%;
+	}
+
+	body.month-pages .grid {
+		break-inside: avoid;
+		page-break-inside: avoid;
 	}
 }
