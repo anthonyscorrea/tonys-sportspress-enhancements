@@ -62,7 +62,9 @@ function tse_sp_event_export_get_column_definitions() {
 			'time'                => __( 'Time', 'tonys-sportspress-enhancements' ),
 			'season'              => __( 'Season', 'tonys-sportspress-enhancements' ),
 			'league'              => __( 'League', 'tonys-sportspress-enhancements' ),
+			'title'               => __( 'Title', 'tonys-sportspress-enhancements' ),
 			'team_name'           => __( 'Team', 'tonys-sportspress-enhancements' ),
+			'separator'           => __( 'Separator', 'tonys-sportspress-enhancements' ),
 			'opponent_name'       => __( 'Opponent', 'tonys-sportspress-enhancements' ),
 			'location_flag'       => __( 'Home/Away', 'tonys-sportspress-enhancements' ),
 			'field_name'          => __( 'Field Name', 'tonys-sportspress-enhancements' ),
@@ -85,10 +87,31 @@ function tse_sp_event_export_get_column_definitions() {
 function tse_sp_event_export_get_default_columns( $format ) {
 	$defaults = array(
 		'matchup' => array( 'date', 'time', 'season', 'league', 'away_team', 'home_team', 'field_name' ),
-		'team'    => array( 'label', 'date', 'time', 'season', 'league', 'opponent_name', 'location_flag', 'field_name' ),
+		'team'    => array( 'label', 'date', 'time', 'season', 'league', 'title', 'field_name' ),
 	);
 
 	return isset( $defaults[ $format ] ) ? $defaults[ $format ] : $defaults['matchup'];
+}
+
+/**
+ * Get supported event title formats.
+ *
+ * @return string[]
+ */
+function tse_sp_event_export_get_title_formats() {
+	return array( 'selected_first', 'matchup' );
+}
+
+/**
+ * Sanitize event title format.
+ *
+ * @param string $format Raw title format.
+ * @return string
+ */
+function tse_sp_event_export_sanitize_title_format( $format ) {
+	$format = sanitize_key( (string) $format );
+
+	return in_array( $format, tse_sp_event_export_get_title_formats(), true ) ? $format : 'selected_first';
 }
 
 /**
@@ -173,24 +196,26 @@ function tse_sp_event_export_parse_id_list( $value ) {
  * @return array
  */
 function tse_sp_event_export_normalize_request_args( $source = null ) {
-	$source = is_array( $source ) ? $source : $_GET;
-	$format = isset( $source['format'] ) ? tse_sp_event_export_sanitize_format( wp_unslash( $source['format'] ) ) : 'matchup';
-	$team_ids = isset( $source['team_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['team_id'] ) ) : array();
-	$season_ids = isset( $source['season_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['season_id'] ) ) : array();
-	$league_ids = isset( $source['league_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['league_id'] ) ) : array();
-	$field_ids = isset( $source['field_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['field_id'] ) ) : array();
+	$source       = is_array( $source ) ? $source : $_GET;
+	$format       = isset( $source['format'] ) ? tse_sp_event_export_sanitize_format( wp_unslash( $source['format'] ) ) : 'matchup';
+	$team_ids     = isset( $source['team_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['team_id'] ) ) : array();
+	$season_ids   = isset( $source['season_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['season_id'] ) ) : array();
+	$league_ids   = isset( $source['league_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['league_id'] ) ) : array();
+	$field_ids    = isset( $source['field_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['field_id'] ) ) : array();
+	$title_format = isset( $source['title_format'] ) ? tse_sp_event_export_sanitize_title_format( wp_unslash( $source['title_format'] ) ) : 'selected_first';
 
 	return array(
-		'team_id'   => isset( $team_ids[0] ) ? $team_ids[0] : 0,
-		'team_ids'  => $team_ids,
-		'season_id' => isset( $season_ids[0] ) ? $season_ids[0] : 0,
-		'season_ids'=> $season_ids,
-		'league_id' => isset( $league_ids[0] ) ? $league_ids[0] : 0,
-		'league_ids'=> $league_ids,
-		'field_id'  => isset( $field_ids[0] ) ? $field_ids[0] : 0,
-		'field_ids' => $field_ids,
-		'format'    => $format,
-		'columns'   => isset( $source['columns'] ) ? tse_sp_event_export_sanitize_columns( $format, wp_unslash( $source['columns'] ) ) : tse_sp_event_export_get_default_columns( $format ),
+		'team_id'      => isset( $team_ids[0] ) ? $team_ids[0] : 0,
+		'team_ids'     => $team_ids,
+		'season_id'    => isset( $season_ids[0] ) ? $season_ids[0] : 0,
+		'season_ids'   => $season_ids,
+		'league_id'    => isset( $league_ids[0] ) ? $league_ids[0] : 0,
+		'league_ids'   => $league_ids,
+		'field_id'     => isset( $field_ids[0] ) ? $field_ids[0] : 0,
+		'field_ids'    => $field_ids,
+		'format'       => $format,
+		'title_format' => $title_format,
+		'columns'      => isset( $source['columns'] ) ? tse_sp_event_export_sanitize_columns( $format, wp_unslash( $source['columns'] ) ) : tse_sp_event_export_get_default_columns( $format ),
 	);
 }
 
@@ -212,9 +237,6 @@ function tse_sp_event_export_validate_filters( $filters ) {
 		wp_die( esc_html__( 'Team format requires a team filter.', 'tonys-sportspress-enhancements' ), '', array( 'response' => 400 ) );
 	}
 
-	if ( count( $team_ids ) > 1 ) {
-		wp_die( esc_html__( 'Team format does not support multiple teams.', 'tonys-sportspress-enhancements' ), '', array( 'response' => 400 ) );
-	}
 }
 
 /**
@@ -294,11 +316,10 @@ function tse_sp_event_export_query_posts( $filters ) {
  * @return array
  */
 function tse_sp_event_export_get_events( $filters ) {
-	$team_id     = isset( $filters['team_id'] ) ? absint( $filters['team_id'] ) : 0;
 	$selected_ids = isset( $filters['team_ids'] ) && is_array( $filters['team_ids'] ) ? array_values( array_filter( array_map( 'absint', $filters['team_ids'] ) ) ) : array();
-	$query_posts = tse_sp_event_export_query_posts( $filters );
-	$events     = array();
-	$team_name = $team_id > 0 ? get_the_title( $team_id ) : '';
+	$title_format = tse_sp_event_export_sanitize_title_format( isset( $filters['title_format'] ) ? $filters['title_format'] : 'selected_first' );
+	$query_posts  = tse_sp_event_export_query_posts( $filters );
+	$events       = array();
 
 	foreach ( $query_posts as $event ) {
 		$event_id = $event instanceof WP_Post ? (int) $event->ID : 0;
@@ -314,21 +335,22 @@ function tse_sp_event_export_get_events( $filters ) {
 		$home_id = isset( $teams[0] ) ? (int) $teams[0] : 0;
 		$away_id = isset( $teams[1] ) ? (int) $teams[1] : 0;
 		$venue   = tse_sp_event_export_get_primary_field( $event_id );
+		$context = tse_sp_event_export_get_team_context( $home_id, $away_id, $selected_ids );
 
-		if ( $team_id > 0 ) {
-			$location_flag = $home_id === $team_id ? 'Home' : 'Away';
-			$opponent_id   = $home_id === $team_id ? $away_id : $home_id;
-		} else {
-			$location_flag = '';
-			$opponent_id   = 0;
-		}
+		$context_team_id = isset( $context['team_id'] ) ? (int) $context['team_id'] : 0;
+		$opponent_id     = isset( $context['opponent_id'] ) ? (int) $context['opponent_id'] : 0;
+		$separator       = isset( $context['separator'] ) ? (string) $context['separator'] : '';
+		$location_flag   = isset( $context['location_flag'] ) ? (string) $context['location_flag'] : '';
+		$title           = tse_sp_event_export_get_event_title_value( $home_id, $away_id, $selected_ids, $title_format );
 
 		$events[] = array(
 			'event_id'            => $event_id,
 			'label'               => '',
 			'date'                => get_post_time( 'm/d/Y', false, $event_id, true ),
 			'time'                => strtoupper( (string) ( function_exists( 'sp_get_time' ) ? sp_get_time( $event_id ) : get_post_time( get_option( 'time_format' ), false, $event_id, true ) ) ),
-			'team_name'           => is_string( $team_name ) ? $team_name : '',
+			'title'               => $title,
+			'team_name'           => $context_team_id > 0 ? get_the_title( $context_team_id ) : '',
+			'separator'           => $separator,
 			'opponent_name'       => $opponent_id > 0 ? get_the_title( $opponent_id ) : '',
 			'location_flag'       => $location_flag,
 			'home_team'           => $home_id > 0 ? get_the_title( $home_id ) : '',
@@ -350,6 +372,100 @@ function tse_sp_event_export_get_events( $filters ) {
 	wp_reset_postdata();
 
 	return $events;
+}
+
+/**
+ * Resolve a display title for a schedule event.
+ *
+ * @param int    $home_id      Home team ID.
+ * @param int    $away_id      Away team ID.
+ * @param int[]  $selected_ids Selected team IDs.
+ * @param string $title_format Title format.
+ * @return string
+ */
+function tse_sp_event_export_get_event_title_value( $home_id, $away_id, $selected_ids, $title_format ) {
+	$home_id      = absint( $home_id );
+	$away_id      = absint( $away_id );
+	$selected_ids = array_values( array_filter( array_map( 'absint', (array) $selected_ids ) ) );
+	$title_format = tse_sp_event_export_sanitize_title_format( $title_format );
+
+	if ( 'matchup' === $title_format ) {
+		return tse_sp_event_export_join_title_parts( $away_id, 'at', $home_id );
+	}
+
+	$context = tse_sp_event_export_get_team_context( $home_id, $away_id, $selected_ids );
+	if ( empty( $context['team_id'] ) ) {
+		return '';
+	}
+
+	if ( 1 === count( $selected_ids ) ) {
+		$opponent_id = isset( $context['opponent_id'] ) ? (int) $context['opponent_id'] : 0;
+		return $opponent_id > 0 ? get_the_title( $opponent_id ) : '';
+	}
+
+	return tse_sp_event_export_join_title_parts(
+		isset( $context['team_id'] ) ? (int) $context['team_id'] : 0,
+		isset( $context['separator'] ) ? (string) $context['separator'] : '',
+		isset( $context['opponent_id'] ) ? (int) $context['opponent_id'] : 0
+	);
+}
+
+/**
+ * Join two team names with a title separator.
+ *
+ * @param int    $first_id  First team ID.
+ * @param string $separator Separator.
+ * @param int    $second_id Second team ID.
+ * @return string
+ */
+function tse_sp_event_export_join_title_parts( $first_id, $separator, $second_id ) {
+	$first_name  = $first_id > 0 ? get_the_title( $first_id ) : '';
+	$second_name = $second_id > 0 ? get_the_title( $second_id ) : '';
+	$parts       = array_values( array_filter( array( $first_name, trim( $separator ), $second_name ), 'strlen' ) );
+
+	return implode( ' ', $parts );
+}
+
+/**
+ * Resolve the team-layout perspective for an event.
+ *
+ * The selected team is always first. If both selected teams are in the game,
+ * use the away team first and the home team second.
+ *
+ * @param int   $home_id      Home team ID.
+ * @param int   $away_id      Away team ID.
+ * @param int[] $selected_ids Selected team IDs.
+ * @return array
+ */
+function tse_sp_event_export_get_team_context( $home_id, $away_id, $selected_ids ) {
+	$home_id      = absint( $home_id );
+	$away_id      = absint( $away_id );
+	$selected_ids = array_values( array_filter( array_map( 'absint', (array) $selected_ids ) ) );
+
+	if ( $away_id > 0 && in_array( $away_id, $selected_ids, true ) ) {
+		return array(
+			'team_id'       => $away_id,
+			'opponent_id'   => $home_id,
+			'separator'     => 'at',
+			'location_flag' => 'Away',
+		);
+	}
+
+	if ( $home_id > 0 && in_array( $home_id, $selected_ids, true ) ) {
+		return array(
+			'team_id'       => $home_id,
+			'opponent_id'   => $away_id,
+			'separator'     => 'vs',
+			'location_flag' => 'Home',
+		);
+	}
+
+	return array(
+		'team_id'       => 0,
+		'opponent_id'   => 0,
+		'separator'     => '',
+		'location_flag' => '',
+	);
 }
 
 /**
@@ -476,25 +592,22 @@ function tse_sp_event_export_fold_ical_line( $line ) {
  * @return string
  */
 function tse_sp_event_export_get_ical_summary( $event, $filters ) {
-	$format   = tse_sp_event_export_sanitize_format( isset( $filters['format'] ) ? $filters['format'] : 'matchup' );
-	$team_ids = isset( $filters['team_ids'] ) && is_array( $filters['team_ids'] ) ? array_values( array_filter( array_map( 'absint', $filters['team_ids'] ) ) ) : array();
-	$team_id  = isset( $team_ids[0] ) ? $team_ids[0] : 0;
+	$format       = tse_sp_event_export_sanitize_format( isset( $filters['format'] ) ? $filters['format'] : 'matchup' );
+	$team_ids     = isset( $filters['team_ids'] ) && is_array( $filters['team_ids'] ) ? array_values( array_filter( array_map( 'absint', $filters['team_ids'] ) ) ) : array();
+	$title_format = tse_sp_event_export_sanitize_title_format( isset( $filters['title_format'] ) ? $filters['title_format'] : 'selected_first' );
+	$team_id      = isset( $team_ids[0] ) ? $team_ids[0] : 0;
 
 	if ( 'team' === $format && $team_id > 0 ) {
 		$teams   = array_values( array_unique( array_map( 'intval', get_post_meta( $event->ID, 'sp_team', false ) ) ) );
 		$home_id = isset( $teams[0] ) ? (int) $teams[0] : 0;
 		$away_id = isset( $teams[1] ) ? (int) $teams[1] : 0;
+		$context = tse_sp_event_export_get_team_context( $home_id, $away_id, $team_ids );
 
-		if ( in_array( $team_id, $teams, true ) ) {
-			$is_home     = $home_id === $team_id;
-			$opponent_id = $is_home ? $away_id : $home_id;
-			$opponent    = $opponent_id > 0 ? get_the_title( $opponent_id ) : __( 'TBD', 'tonys-sportspress-enhancements' );
-			$summary     = sprintf(
-				/* translators: 1: preposition, 2: opponent name. */
-				__( '%1$s %2$s', 'tonys-sportspress-enhancements' ),
-				$is_home ? 'vs' : 'at',
-				$opponent
-			);
+		if ( ! empty( $context['team_id'] ) ) {
+			$summary = tse_sp_event_export_get_event_title_value( $home_id, $away_id, $team_ids, $title_format );
+			if ( '' === $summary ) {
+				$summary = $event->post_title;
+			}
 
 			return apply_filters( 'sportspress_ical_feed_summary', $summary, $event );
 		}
@@ -915,13 +1028,14 @@ function tse_sp_event_export_get_feed_url( $args = array(), $feed_type = 'csv' )
 	$filters = tse_sp_event_export_normalize_request_args( $args );
 	$feed    = 'ics' === sanitize_key( $feed_type ) ? 'sp-ics' : 'sp-csv';
 	$query   = array(
-		'feed'      => $feed,
-		'format'    => $filters['format'],
-		'team_id'   => ! empty( $filters['team_ids'] ) ? implode( ',', $filters['team_ids'] ) : '',
-		'season_id' => ! empty( $filters['season_ids'] ) ? implode( ',', $filters['season_ids'] ) : '',
-		'league_id' => ! empty( $filters['league_ids'] ) ? implode( ',', $filters['league_ids'] ) : '',
-		'field_id'  => ! empty( $filters['field_ids'] ) ? implode( ',', $filters['field_ids'] ) : '',
-		'columns'   => implode( ',', $filters['columns'] ),
+		'feed'         => $feed,
+		'format'       => $filters['format'],
+		'team_id'      => ! empty( $filters['team_ids'] ) ? implode( ',', $filters['team_ids'] ) : '',
+		'season_id'    => ! empty( $filters['season_ids'] ) ? implode( ',', $filters['season_ids'] ) : '',
+		'league_id'    => ! empty( $filters['league_ids'] ) ? implode( ',', $filters['league_ids'] ) : '',
+		'field_id'     => ! empty( $filters['field_ids'] ) ? implode( ',', $filters['field_ids'] ) : '',
+		'title_format' => isset( $filters['title_format'] ) ? tse_sp_event_export_sanitize_title_format( $filters['title_format'] ) : 'selected_first',
+		'columns'      => implode( ',', $filters['columns'] ),
 	);
 
 	return add_query_arg( array_filter( $query, 'strlen' ), home_url( '/' ) );

@@ -146,8 +146,14 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$vars[] = 'sp_team';
 			$vars[] = 'sp_season';
 			$vars[] = 'sp_league';
+			$vars[] = 'sp_field';
+			$vars[] = 'team_label';
+			$vars[] = 'field_label';
+			$vars[] = 'title_format';
 			$vars[] = 'paper';
 			$vars[] = 'autoprint';
+			$vars[] = 'month_pages';
+			$vars[] = 'black_white';
 
 			return $vars;
 		}
@@ -221,16 +227,24 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				$this->default_settings()
 			);
 
-			$current = wp_parse_args(
-				is_array( $input ) ? $input : array(),
-				$existing
-			);
+			$current          = is_array( $input ) ? $input : array();
+			$active_season_id = isset( $current['active_season_id'] ) ? absint( (string) $current['active_season_id'] ) : 0;
 
 			return array(
 				'calendar_feed_url'     => isset( $existing['calendar_feed_url'] ) && is_string( $existing['calendar_feed_url'] ) ? $existing['calendar_feed_url'] : '',
 				'sync_interval_minutes' => isset( $existing['sync_interval_minutes'] ) ? absint( (string) $existing['sync_interval_minutes'] ) : 60,
-				'venue_color_overrides' => $this->sanitize_venue_color_overrides( isset( $current['venue_color_overrides'] ) ? $current['venue_color_overrides'] : array() ),
-				'venue_use_team_primary' => $this->sanitize_venue_primary_flags( isset( $current['venue_use_team_primary'] ) ? $current['venue_use_team_primary'] : array() ),
+				'venue_color_overrides' => $this->merge_sanitized_season_settings(
+					isset( $existing['venue_color_overrides'] ) && is_array( $existing['venue_color_overrides'] ) ? $existing['venue_color_overrides'] : array(),
+					$this->sanitize_venue_color_overrides( isset( $current['venue_color_overrides'] ) ? $current['venue_color_overrides'] : array() ),
+					$active_season_id,
+					true
+				),
+				'venue_use_team_primary' => $this->merge_sanitized_season_settings(
+					isset( $existing['venue_use_team_primary'] ) && is_array( $existing['venue_use_team_primary'] ) ? $existing['venue_use_team_primary'] : array(),
+					$this->sanitize_venue_primary_flags( isset( $current['venue_use_team_primary'] ) ? $current['venue_use_team_primary'] : array() ),
+					$active_season_id,
+					false
+				),
 				'printable_venue_label_mode' => $this->sanitize_venue_label_mode( isset( $current['printable_venue_label_mode'] ) ? $current['printable_venue_label_mode'] : '' ),
 			);
 		}
@@ -322,6 +336,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 
 			echo '<form method="post" action="options.php">';
 			settings_fields( self::OPTION_GROUP );
+			echo '<input type="hidden" name="' . esc_attr( self::OPTION_KEY . '[active_season_id]' ) . '" value="' . esc_attr( (string) $season_id ) . '" />';
 
 			echo '<h2>' . esc_html__( 'Field Colors By Season', 'tonys-sportspress-enhancements' ) . '</h2>';
 			echo '<p>' . esc_html__( 'Pick venue colors per season. Colors are darkened automatically when needed so white text still reads clearly.', 'tonys-sportspress-enhancements' ) . '</p>';
@@ -359,11 +374,11 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			echo '<th scope="row"><label for="asc-sp-printable-venue-label-mode">' . esc_html__( 'Venue Label Under Time', 'tonys-sportspress-enhancements' ) . '</label></th>';
 			echo '<td>';
 			echo '<select id="asc-sp-printable-venue-label-mode" name="' . esc_attr( self::OPTION_KEY . '[printable_venue_label_mode]' ) . '">';
-			foreach ( $this->get_venue_label_mode_options() as $mode => $label ) {
+			foreach ( $this->get_label_mode_options() as $mode => $label ) {
 				echo '<option value="' . esc_attr( $mode ) . '" ' . selected( $this->get_venue_label_mode(), $mode, false ) . '>' . esc_html( $label ) . '</option>';
 			}
 			echo '</select>';
-			echo '<p class="description">' . esc_html__( 'Choose whether the printable schedule shows the venue full name, abbreviation, or short name below each game time.', 'tonys-sportspress-enhancements' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Default field label mode for printable URLs that do not include a field_label parameter.', 'tonys-sportspress-enhancements' ) . '</p>';
 			echo '</td>';
 			echo '</tr>';
 			echo '</tbody></table>';
@@ -426,17 +441,17 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		private function render_printable_url_builder( $season_id ) {
 			$leagues = function_exists( 'tse_sp_schedule_exporter_get_leagues' ) ? tse_sp_schedule_exporter_get_leagues() : array();
 			$teams   = function_exists( 'tse_sp_schedule_exporter_get_teams' ) ? tse_sp_schedule_exporter_get_teams() : array();
+			$fields  = function_exists( 'tse_sp_schedule_exporter_get_fields' ) ? tse_sp_schedule_exporter_get_fields() : array();
 			$paper   = '11x17';
 
 			echo '<div class="tse-printable-url-builder" style="max-width:1100px;margin-top:28px;padding:20px 24px;border:1px solid #dcdcde;background:#fff;">';
 			echo '<h2 style="margin-top:0;">' . esc_html__( 'Printable Calendar URL Builder', 'tonys-sportspress-enhancements' ) . '</h2>';
-			echo '<p>' . esc_html__( 'Build a shareable printable calendar URL with team, season, league, paper size, and optional auto-print.', 'tonys-sportspress-enhancements' ) . '</p>';
+			echo '<p>' . esc_html__( 'Build a shareable printable calendar URL with teams, season, league, field, label formats, paper size, and optional auto-print.', 'tonys-sportspress-enhancements' ) . '</p>';
 
 			echo '<table class="form-table" role="presentation"><tbody>';
 
 			echo '<tr><th scope="row"><label for="tse-printable-builder-team">' . esc_html__( 'Team', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
-			echo '<select id="tse-printable-builder-team" style="min-width:280px;">';
-			echo '<option value="0">' . esc_html__( 'Choose a team', 'tonys-sportspress-enhancements' ) . '</option>';
+			echo '<select id="tse-printable-builder-team" multiple="multiple" size="' . esc_attr( (string) min( 8, max( 3, count( $teams ) ) ) ) . '" style="min-width:280px;">';
 			foreach ( $teams as $team ) {
 				if ( ! $team instanceof WP_Post ) {
 					continue;
@@ -444,6 +459,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				echo '<option value="' . esc_attr( (string) $team->ID ) . '">' . esc_html( $team->post_title ) . '</option>';
 			}
 			echo '</select>';
+			echo '<p class="description">' . esc_html__( 'Select one or more teams. Multiple teams create a combined matchup calendar.', 'tonys-sportspress-enhancements' ) . '</p>';
 			echo '</td></tr>';
 
 			echo '<tr><th scope="row"><label for="tse-printable-builder-season">' . esc_html__( 'Season', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
@@ -470,6 +486,18 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			echo '</select>';
 			echo '</td></tr>';
 
+			echo '<tr><th scope="row"><label for="tse-printable-builder-field">' . esc_html__( 'Field', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
+			echo '<select id="tse-printable-builder-field" style="min-width:280px;">';
+			echo '<option value="0">' . esc_html__( 'Any field', 'tonys-sportspress-enhancements' ) . '</option>';
+			foreach ( $fields as $field ) {
+				if ( ! $field instanceof WP_Term ) {
+					continue;
+				}
+				echo '<option value="' . esc_attr( (string) $field->term_id ) . '">' . esc_html( $field->name ) . '</option>';
+			}
+			echo '</select>';
+			echo '</td></tr>';
+
 			echo '<tr><th scope="row"><label for="tse-printable-builder-paper">' . esc_html__( 'Paper Size', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
 			echo '<select id="tse-printable-builder-paper" style="min-width:280px;">';
 			foreach ( array( 'letter' => __( 'Letter', 'tonys-sportspress-enhancements' ), '11x17' => __( '11x17 / Ledger', 'tonys-sportspress-enhancements' ) ) as $paper_value => $paper_label ) {
@@ -478,10 +506,44 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			echo '</select>';
 			echo '</td></tr>';
 
+			echo '<tr><th scope="row"><label for="tse-printable-builder-team-label">' . esc_html__( 'Team Name Format', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
+			echo '<select id="tse-printable-builder-team-label" style="min-width:280px;">';
+			foreach ( $this->get_label_mode_options() as $mode => $label ) {
+				echo '<option value="' . esc_attr( $mode ) . '" ' . selected( 'name', $mode, false ) . '>' . esc_html( $label ) . '</option>';
+			}
+			echo '</select>';
+			echo '</td></tr>';
+
+			echo '<tr><th scope="row"><label for="tse-printable-builder-field-label">' . esc_html__( 'Field Name Format', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
+			echo '<select id="tse-printable-builder-field-label" style="min-width:280px;">';
+			foreach ( $this->get_label_mode_options() as $mode => $label ) {
+				echo '<option value="' . esc_attr( $mode ) . '" ' . selected( $this->get_venue_label_mode(), $mode, false ) . '>' . esc_html( $label ) . '</option>';
+			}
+			echo '</select>';
+			echo '</td></tr>';
+
+			echo '<tr><th scope="row"><label for="tse-printable-builder-title-format">' . esc_html__( 'Title Format', 'tonys-sportspress-enhancements' ) . '</label></th><td>';
+			echo '<select id="tse-printable-builder-title-format" style="min-width:280px;">';
+			foreach ( $this->get_title_format_options() as $format => $label ) {
+				echo '<option value="' . esc_attr( $format ) . '">' . esc_html( $label ) . '</option>';
+			}
+			echo '</select>';
+			echo '</td></tr>';
+
 			echo '<tr><th scope="row">' . esc_html__( 'Options', 'tonys-sportspress-enhancements' ) . '</th><td>';
 			echo '<label for="tse-printable-builder-autoprint" style="display:inline-flex;align-items:center;gap:6px;">';
 			echo '<input id="tse-printable-builder-autoprint" type="checkbox" value="1" />';
 			echo esc_html__( 'Auto-open print dialog', 'tonys-sportspress-enhancements' );
+			echo '</label>';
+			echo '<br />';
+			echo '<label for="tse-printable-builder-month-pages" style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;">';
+			echo '<input id="tse-printable-builder-month-pages" type="checkbox" value="1" />';
+			echo esc_html__( 'Print each month on its own page', 'tonys-sportspress-enhancements' );
+			echo '</label>';
+			echo '<br />';
+			echo '<label for="tse-printable-builder-black-white" style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;">';
+			echo '<input id="tse-printable-builder-black-white" type="checkbox" value="1" />';
+			echo esc_html__( 'High-legibility greyscale', 'tonys-sportspress-enhancements' );
 			echo '</label>';
 			echo '</td></tr>';
 
@@ -495,7 +557,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			echo '</button>';
 			echo '</div>';
 			echo '<p><a id="tse-printable-builder-open" class="button button-primary" href="' . esc_url( home_url( '/' ) ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Open Printable URL', 'tonys-sportspress-enhancements' ) . '</a></p>';
-			echo '<p class="description">' . esc_html__( 'The printable route requires a single team selection.', 'tonys-sportspress-enhancements' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'The printable route requires at least one selected team.', 'tonys-sportspress-enhancements' ) . '</p>';
 			echo '</div>';
 
 			$this->render_printable_url_builder_script();
@@ -522,18 +584,37 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				var team = root.querySelector('#tse-printable-builder-team');
 				var season = root.querySelector('#tse-printable-builder-season');
 				var league = root.querySelector('#tse-printable-builder-league');
+				var field = root.querySelector('#tse-printable-builder-field');
 				var paper = root.querySelector('#tse-printable-builder-paper');
+				var teamLabel = root.querySelector('#tse-printable-builder-team-label');
+				var fieldLabel = root.querySelector('#tse-printable-builder-field-label');
+				var titleFormat = root.querySelector('#tse-printable-builder-title-format');
 				var autoprint = root.querySelector('#tse-printable-builder-autoprint');
+				var monthPages = root.querySelector('#tse-printable-builder-month-pages');
+				var blackWhite = root.querySelector('#tse-printable-builder-black-white');
 				var output = root.querySelector('#tse-printable-builder-output');
 				var copyButton = root.querySelector('#tse-printable-builder-copy');
 				var openLink = root.querySelector('#tse-printable-builder-open');
 
+				function selectedValues(select) {
+					if (!select) {
+						return [];
+					}
+
+					return Array.prototype.slice.call(select.selectedOptions || []).map(function(option){
+						return option.value;
+					}).filter(function(value){
+						return value && value !== '0';
+					});
+				}
+
 				function buildUrl() {
 					var url = new URL(baseUrl, window.location.origin);
+					var teamValues = selectedValues(team);
 					url.searchParams.set(queryFlag, '1');
 
-					if (team.value && team.value !== '0') {
-						url.searchParams.set('sp_team', team.value);
+					if (teamValues.length) {
+						url.searchParams.set('sp_team', teamValues.join(','));
 					} else {
 						url.searchParams.delete('sp_team');
 					}
@@ -550,8 +631,26 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 						url.searchParams.delete('sp_league');
 					}
 
+					if (field.value && field.value !== '0') {
+						url.searchParams.set('sp_field', field.value);
+					} else {
+						url.searchParams.delete('sp_field');
+					}
+
 					if (paper.value) {
 						url.searchParams.set('paper', paper.value);
+					}
+
+					if (teamLabel.value) {
+						url.searchParams.set('team_label', teamLabel.value);
+					}
+
+					if (fieldLabel.value) {
+						url.searchParams.set('field_label', fieldLabel.value);
+					}
+
+					if (titleFormat.value) {
+						url.searchParams.set('title_format', titleFormat.value);
 					}
 
 					if (autoprint.checked) {
@@ -560,12 +659,24 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 						url.searchParams.delete('autoprint');
 					}
 
+					if (monthPages.checked) {
+						url.searchParams.set('month_pages', '1');
+					} else {
+						url.searchParams.delete('month_pages');
+					}
+
+					if (blackWhite.checked) {
+						url.searchParams.set('black_white', '1');
+					} else {
+						url.searchParams.delete('black_white');
+					}
+
 					output.value = url.toString();
 					openLink.href = url.toString();
-					openLink.toggleAttribute('disabled', !(team.value && team.value !== '0'));
+					openLink.toggleAttribute('disabled', !teamValues.length);
 				}
 
-				[team, season, league, paper, autoprint].forEach(function(input){
+				[team, season, league, field, paper, teamLabel, fieldLabel, titleFormat, autoprint, monthPages, blackWhite].forEach(function(input){
 					input.addEventListener('change', buildUrl);
 				});
 
@@ -618,8 +729,8 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				return;
 			}
 
-			$team_id = absint( (string) get_query_var( 'sp_team' ) );
-			if ( $team_id <= 0 || 'sp_team' !== get_post_type( $team_id ) ) {
+			$team_ids = $this->parse_team_ids( get_query_var( 'sp_team' ) );
+			if ( empty( $team_ids ) ) {
 				status_header( 400 );
 				nocache_headers();
 				echo esc_html__( 'Missing or invalid team id.', 'tonys-sportspress-enhancements' );
@@ -631,23 +742,33 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				$season_id = absint( (string) get_option( 'sportspress_season', '0' ) );
 			}
 			$league_id = absint( (string) get_query_var( 'sp_league' ) );
+			$field_ids = $this->parse_term_ids( get_query_var( 'sp_field' ), 'sp_venue' );
+			$team_label_mode  = $this->sanitize_label_mode( get_query_var( 'team_label' ), 'abbreviation' );
+			$field_label_mode = $this->sanitize_label_mode( get_query_var( 'field_label' ), $this->get_venue_label_mode() );
+			$title_format     = $this->sanitize_title_format( get_query_var( 'title_format' ) );
 
 			$paper = $this->normalize_paper_size( (string) get_query_var( 'paper' ) );
 			$autoprint = '1' === (string) get_query_var( 'autoprint' );
+			$month_pages = '1' === (string) get_query_var( 'month_pages' );
+			$black_white = '1' === (string) get_query_var( 'black_white' );
 
-			$team_name               = get_the_title( $team_id );
-			$team_logo               = get_the_post_thumbnail( $team_id, array( 72, 72 ), array( 'class' => 'team-logo-img' ) );
+			$is_multi_team           = count( $team_ids ) > 1;
+			$primary_team_id         = isset( $team_ids[0] ) ? (int) $team_ids[0] : 0;
+			$team_name               = $this->get_printable_title( $team_ids, $team_label_mode );
+			$team_logo               = $is_multi_team ? '' : get_the_post_thumbnail( $primary_team_id, array( 72, 72 ), array( 'class' => 'team-logo-img' ) );
 			$brand_logo              = $this->get_header_brand_logo();
 			$site_url                = home_url( '/' );
 			$qr_url                  = 'https://api.qrserver.com/v1/create-qr-code/?size=144x144&data=' . rawurlencode( $site_url );
 			$season_name             = '';
-			$entries                 = $this->get_schedule_entries( $team_id, $season_id, $league_id );
-			$team_palette            = $this->get_team_color_palette( $team_id );
-			$team_primary_for_fields = $this->get_strict_team_primary_color( $team_id );
+			$field_name              = count( $field_ids ) === 1 ? $this->get_term_label( (int) $field_ids[0], 'sp_venue', $field_label_mode ) : '';
+			$entries                 = $this->get_schedule_entries( $team_ids, $season_id, $league_id, $field_ids, $team_label_mode, $field_label_mode, $title_format );
+			$team_palette            = $is_multi_team ? $this->get_default_printable_palette() : $this->get_team_color_palette( $primary_team_id );
+			$team_primary_for_fields = $is_multi_team ? '' : $this->get_strict_team_primary_color( $primary_team_id );
 			$entries_by_day          = array();
 			$venue_colors            = array();
 			$month_keys              = array();
 			$layout                  = array();
+			$suppress_event_venue    = 1 === count( $field_ids );
 
 			if ( $season_id > 0 ) {
 				$season = get_term( $season_id, 'sp_season' );
@@ -661,14 +782,14 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 
 				if ( '' !== $entry['venue_name'] && is_string( $entry['venue_key'] ) && ! isset( $venue_colors[ $entry['venue_key'] ] ) ) {
 					$venue_colors[ $entry['venue_key'] ] = array(
-						'name'  => (string) $entry['venue_name'],
-						'color' => $this->get_venue_color( (string) $entry['venue_name'], $season_id, (int) $entry['venue_id'], $team_primary_for_fields ),
+						'name'  => ! empty( $entry['venue_label'] ) ? (string) $entry['venue_label'] : (string) $entry['venue_name'],
+						'color' => $this->get_venue_color( (string) $entry['venue_name'], $season_id, (int) $entry['venue_id'], $team_primary_for_fields, $is_multi_team ),
 					);
 				}
 			}
 
 			$month_keys = $this->get_month_keys( $entries );
-			$layout     = $this->get_sheet_layout( count( $month_keys ), $paper );
+			$layout     = $this->get_sheet_layout( $month_pages ? 1 : count( $month_keys ), $paper );
 
 			status_header( 200 );
 			nocache_headers();
@@ -688,7 +809,14 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				echo '<script>window.addEventListener("load",function(){window.print();});</script>';
 			}
 			echo '</head>';
-			echo '<body class="print-preview ' . esc_attr( $paper ) . '">';
+			$body_classes = array( 'print-preview', $paper );
+			if ( $month_pages ) {
+				$body_classes[] = 'month-pages';
+			}
+			if ( $black_white ) {
+				$body_classes[] = 'black-white';
+			}
+			echo '<body class="' . esc_attr( implode( ' ', $body_classes ) ) . '">';
 
 			$root_vars = array(
 				'--sheet-scale:' . $layout['sheet_scale'],
@@ -710,7 +838,55 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			);
 
 			echo '<main class="print-shell ' . esc_attr( $paper ) . '" style="' . esc_attr( implode( ';', $root_vars ) . ';' ) . '">';
-			echo '<div class="print-page">';
+			$meta_parts = array( $season_name ? $season_name : __( 'Current', 'tonys-sportspress-enhancements' ) );
+			if ( '' !== $field_name ) {
+				$meta_parts[] = $field_name;
+			}
+
+			if ( empty( $entries ) ) {
+				echo '<div class="print-page">';
+				$this->render_printable_header( $team_name, $meta_parts, $team_logo, $brand_logo );
+				echo '<section class="empty">';
+				echo '<p>' . esc_html__( 'No SportsPress events were found for the selected teams and filters.', 'tonys-sportspress-enhancements' ) . '</p>';
+				echo '</section>';
+				$this->render_printable_footer( $venue_colors, $site_url, $qr_url );
+				echo '</div>';
+			} elseif ( $month_pages ) {
+				foreach ( $month_keys as $month_key ) {
+					echo '<div class="print-page month-page">';
+					$this->render_printable_header( $team_name, $meta_parts, $team_logo, $brand_logo );
+					echo '<section class="sheet-grid">';
+					$this->render_month_grid( $month_key, $entries_by_day, $venue_colors, $team_palette, $is_multi_team, $suppress_event_venue );
+					echo '</section>';
+					$this->render_printable_footer( $venue_colors, $site_url, $qr_url );
+					echo '</div>';
+				}
+			} else {
+				echo '<div class="print-page">';
+				$this->render_printable_header( $team_name, $meta_parts, $team_logo, $brand_logo );
+				echo '<section class="sheet-grid">';
+				foreach ( $month_keys as $month_key ) {
+					$this->render_month_grid( $month_key, $entries_by_day, $venue_colors, $team_palette, $is_multi_team, $suppress_event_venue );
+				}
+				echo '</section>';
+				$this->render_printable_footer( $venue_colors, $site_url, $qr_url );
+				echo '</div>';
+			}
+			echo '</main>';
+			echo '</body></html>';
+			exit;
+		}
+
+		/**
+		 * Render the printable page header.
+		 *
+		 * @param string $team_name  Header title.
+		 * @param array  $meta_parts Header metadata strings.
+		 * @param string $team_logo  Team logo markup.
+		 * @param string $brand_logo Brand logo markup.
+		 * @return void
+		 */
+		private function render_printable_header( $team_name, $meta_parts, $team_logo, $brand_logo ) {
 			echo '<header class="header">';
 			echo '<div class="header-brand">';
 			if ( '' !== $team_logo ) {
@@ -718,7 +894,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			}
 			echo '<div class="header-copy">';
 			echo '<h1 class="title">' . esc_html( $team_name ) . '</h1>';
-			echo '<p class="meta">' . esc_html( $season_name ? $season_name : __( 'Current', 'tonys-sportspress-enhancements' ) ) . '</p>';
+			echo '<p class="meta">' . esc_html( implode( ' | ', array_filter( array_map( 'strval', $meta_parts ) ) ) ) . '</p>';
 			echo '</div>';
 			echo '</div>';
 
@@ -726,19 +902,17 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				echo '<span class="league-logo" aria-hidden="true">' . wp_kses_post( $brand_logo ) . '</span>';
 			}
 			echo '</header>';
+		}
 
-			if ( empty( $entries ) ) {
-				echo '<section class="empty">';
-				echo '<p>' . esc_html__( 'No SportsPress events were found for this team and season.', 'tonys-sportspress-enhancements' ) . '</p>';
-				echo '</section>';
-			} else {
-				echo '<section class="sheet-grid">';
-				foreach ( $month_keys as $month_key ) {
-					$this->render_month_grid( $month_key, $entries_by_day, $venue_colors, $team_palette );
-				}
-				echo '</section>';
-			}
-
+		/**
+		 * Render the printable page footer.
+		 *
+		 * @param array  $venue_colors Venue legend data.
+		 * @param string $site_url     Site URL.
+		 * @param string $qr_url       QR code image URL.
+		 * @return void
+		 */
+		private function render_printable_footer( $venue_colors, $site_url, $qr_url ) {
 			echo '<footer class="footer-meta">';
 			if ( ! empty( $venue_colors ) ) {
 				echo '<div class="legend legend-bottom">';
@@ -762,10 +936,6 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			echo '<img class="footer-qr-image" src="' . esc_url( $qr_url ) . '" alt="' . esc_attr__( 'QR code for website', 'tonys-sportspress-enhancements' ) . '" loading="lazy" decoding="async">';
 			echo '</div>';
 			echo '</footer>';
-			echo '</div>';
-			echo '</main>';
-			echo '</body></html>';
-			exit;
 		}
 
 		/**
@@ -776,8 +946,9 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 * @param string $paper     Paper size.
 		 * @return string
 		 */
-		private function build_url( $team_id, $season_id, $paper, $league_id = 0 ) {
+		private function build_url( $team_id, $season_id, $paper, $league_id = 0, $field_id = 0, $month_pages = false, $team_label_mode = 'name', $field_label_mode = '', $title_format = 'selected_first', $black_white = false ) {
 			$paper = $this->normalize_paper_size( $paper );
+			$field_label_mode = '' === $field_label_mode ? $this->get_venue_label_mode() : $field_label_mode;
 
 			return add_query_arg(
 				array(
@@ -785,10 +956,130 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 					'sp_team'        => (string) absint( $team_id ),
 					'sp_season'      => $season_id > 0 ? (string) absint( $season_id ) : '',
 					'sp_league'      => $league_id > 0 ? (string) absint( $league_id ) : '',
+					'sp_field'       => $field_id > 0 ? (string) absint( $field_id ) : '',
+					'team_label'     => $this->sanitize_label_mode( $team_label_mode, 'name' ),
+					'field_label'    => $this->sanitize_label_mode( $field_label_mode, $this->get_venue_label_mode() ),
+					'title_format'   => $this->sanitize_title_format( $title_format ),
 					'paper'          => (string) $paper,
+					'month_pages'    => $month_pages ? '1' : '',
+					'black_white'    => $black_white ? '1' : '',
 				),
 				home_url( '/' )
 			);
+		}
+
+		/**
+		 * Parse and validate one or more team IDs.
+		 *
+		 * @param mixed $value Raw query value.
+		 * @return int[]
+		 */
+		private function parse_team_ids( $value ) {
+			$ids   = $this->parse_id_list( $value );
+			$valid = array();
+
+			foreach ( $ids as $id ) {
+				if ( 'sp_team' === get_post_type( $id ) ) {
+					$valid[] = $id;
+				}
+			}
+
+			return array_values( array_unique( $valid ) );
+		}
+
+		/**
+		 * Parse and validate one or more term IDs for a taxonomy.
+		 *
+		 * @param mixed  $value    Raw query value.
+		 * @param string $taxonomy Taxonomy name.
+		 * @return int[]
+		 */
+		private function parse_term_ids( $value, $taxonomy ) {
+			$ids   = $this->parse_id_list( $value );
+			$valid = array();
+
+			foreach ( $ids as $id ) {
+				$term = get_term( $id, $taxonomy );
+				if ( $term && ! is_wp_error( $term ) ) {
+					$valid[] = $id;
+				}
+			}
+
+			return array_values( array_unique( $valid ) );
+		}
+
+		/**
+		 * Parse scalar, array, or comma-delimited ID values.
+		 *
+		 * @param mixed $value Raw value.
+		 * @return int[]
+		 */
+		private function parse_id_list( $value ) {
+			$values = is_array( $value ) ? $value : explode( ',', (string) $value );
+			$ids    = array();
+
+			foreach ( $values as $raw_value ) {
+				$id = absint( trim( (string) $raw_value ) );
+				if ( $id > 0 ) {
+					$ids[] = $id;
+				}
+			}
+
+			return array_values( array_unique( $ids ) );
+		}
+
+		/**
+		 * Build the printable title for selected teams.
+		 *
+		 * @param int[] $team_ids Team IDs.
+		 * @return string
+		 */
+		private function get_printable_title( $team_ids, $mode = 'name' ) {
+			$names = array();
+
+			foreach ( $team_ids as $team_id ) {
+				$title = $this->get_team_label( $team_id, $mode );
+				if ( is_string( $title ) && '' !== trim( $title ) ) {
+					$names[] = trim( $title );
+				}
+			}
+
+			if ( empty( $names ) ) {
+				return __( 'Printable Schedule', 'tonys-sportspress-enhancements' );
+			}
+
+			return implode( ', ', $names );
+		}
+
+		/**
+		 * Get a term display name.
+		 *
+		 * @param int    $term_id  Term ID.
+		 * @param string $taxonomy Taxonomy name.
+		 * @return string
+		 */
+		private function get_term_name( $term_id, $taxonomy ) {
+			$term = get_term( $term_id, $taxonomy );
+
+			return $term && ! is_wp_error( $term ) && isset( $term->name ) ? (string) $term->name : '';
+		}
+
+		/**
+		 * Get a term display label.
+		 *
+		 * @param int    $term_id  Term ID.
+		 * @param string $taxonomy Taxonomy name.
+		 * @param string $mode     Label mode.
+		 * @return string
+		 */
+		private function get_term_label( $term_id, $taxonomy, $mode = 'name' ) {
+			$term = get_term( $term_id, $taxonomy );
+
+			if ( ! $term || is_wp_error( $term ) || ! isset( $term->name ) ) {
+				return '';
+			}
+
+			return $this->get_configured_venue_label( $term, $mode );
 		}
 
 		/**
@@ -802,7 +1093,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				'sync_interval_minutes' => 60,
 				'venue_color_overrides' => array(),
 				'venue_use_team_primary'=> array(),
-				'printable_venue_label_mode' => 'full_name',
+				'printable_venue_label_mode' => 'name',
 			);
 		}
 
@@ -836,16 +1127,42 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		}
 
 		/**
-		 * Get supported venue label modes.
+		 * Get supported label modes.
 		 *
 		 * @return array
 		 */
-		private function get_venue_label_mode_options() {
+		private function get_label_mode_options() {
 			return array(
-				'full_name'    => __( 'Full Name', 'tonys-sportspress-enhancements' ),
+				'name'         => __( 'Name', 'tonys-sportspress-enhancements' ),
+				'shortname'    => __( 'Short Name', 'tonys-sportspress-enhancements' ),
 				'abbreviation' => __( 'Abbreviation', 'tonys-sportspress-enhancements' ),
-				'short_name'   => __( 'Short Name', 'tonys-sportspress-enhancements' ),
 			);
+		}
+
+		/**
+		 * Sanitize label mode.
+		 *
+		 * @param mixed  $value    Raw value.
+		 * @param string $fallback Fallback mode.
+		 * @return string
+		 */
+		private function sanitize_label_mode( $value, $fallback = 'name' ) {
+			$mode    = is_string( $value ) ? sanitize_key( $value ) : '';
+			$aliases = array(
+				'full_name'  => 'name',
+				'fullname'   => 'name',
+				'short_name' => 'shortname',
+				'short'      => 'shortname',
+				'abbr'       => 'abbreviation',
+			);
+			if ( isset( $aliases[ $mode ] ) ) {
+				$mode = $aliases[ $mode ];
+			}
+
+			$allowed  = array_keys( $this->get_label_mode_options() );
+			$fallback = isset( $aliases[ $fallback ] ) ? $aliases[ $fallback ] : $fallback;
+
+			return in_array( $mode, $allowed, true ) ? $mode : ( in_array( $fallback, $allowed, true ) ? $fallback : 'name' );
 		}
 
 		/**
@@ -855,10 +1172,32 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 * @return string
 		 */
 		private function sanitize_venue_label_mode( $value ) {
-			$mode    = is_string( $value ) ? sanitize_key( $value ) : '';
-			$allowed = array_keys( $this->get_venue_label_mode_options() );
+			return $this->sanitize_label_mode( $value, 'name' );
+		}
 
-			return in_array( $mode, $allowed, true ) ? $mode : 'full_name';
+		/**
+		 * Get supported event title formats.
+		 *
+		 * @return array
+		 */
+		private function get_title_format_options() {
+			return array(
+				'selected_first' => __( 'Selected Teams First', 'tonys-sportspress-enhancements' ),
+				'matchup'        => __( 'Matchup', 'tonys-sportspress-enhancements' ),
+			);
+		}
+
+		/**
+		 * Sanitize event title format.
+		 *
+		 * @param mixed $value Raw value.
+		 * @return string
+		 */
+		private function sanitize_title_format( $value ) {
+			$format = is_string( $value ) ? sanitize_key( $value ) : '';
+			$options = array_keys( $this->get_title_format_options() );
+
+			return in_array( $format, $options, true ) ? $format : 'selected_first';
 		}
 
 		/**
@@ -941,6 +1280,36 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			}
 
 			return $sanitized;
+		}
+
+		/**
+		 * Merge submitted season-scoped settings without preserving unchecked boxes.
+		 *
+		 * @param array $existing         Existing settings.
+		 * @param array $submitted        Sanitized submitted settings.
+		 * @param int   $active_season_id Active season ID.
+		 * @param bool  $preserve_missing Whether to preserve season if missing.
+		 * @return array
+		 */
+		private function merge_sanitized_season_settings( $existing, $submitted, $active_season_id, $preserve_missing ) {
+			$merged = is_array( $existing ) ? $existing : array();
+
+			if ( $active_season_id <= 0 ) {
+				return ! empty( $submitted ) ? $submitted : $merged;
+			}
+
+			$season_key = (string) $active_season_id;
+			if ( isset( $submitted[ $season_key ] ) && is_array( $submitted[ $season_key ] ) ) {
+				$merged[ $season_key ] = $submitted[ $season_key ];
+			} elseif ( $preserve_missing ) {
+				if ( isset( $existing[ $season_key ] ) && is_array( $existing[ $season_key ] ) ) {
+					$merged[ $season_key ] = $existing[ $season_key ];
+				}
+			} else {
+				unset( $merged[ $season_key ] );
+			}
+
+			return $merged;
 		}
 
 		/**
@@ -1085,12 +1454,25 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		/**
 		 * Collect event entries for the calendar.
 		 *
-		 * @param int $team_id   Team ID.
-		 * @param int $season_id Season ID.
-		 * @param int $league_id League ID.
+		 * @param int|int[] $team_ids Team IDs.
+		 * @param int       $season_id Season ID.
+		 * @param int       $league_id League ID.
+		 * @param int[]     $field_ids Field IDs.
 		 * @return array
 		 */
-		private function get_schedule_entries( $team_id, $season_id, $league_id = 0 ) {
+		private function get_schedule_entries( $team_ids, $season_id, $league_id = 0, $field_ids = array(), $team_label_mode = 'abbreviation', $field_label_mode = '', $title_format = 'selected_first' ) {
+			$team_ids         = is_array( $team_ids ) ? array_values( array_filter( array_map( 'absint', $team_ids ) ) ) : array( absint( $team_ids ) );
+			$primary_team     = isset( $team_ids[0] ) ? (int) $team_ids[0] : 0;
+			$is_multi_team    = count( $team_ids ) > 1;
+			$field_ids        = is_array( $field_ids ) ? array_values( array_filter( array_map( 'absint', $field_ids ) ) ) : array();
+			$team_label_mode  = $this->sanitize_label_mode( $team_label_mode, 'abbreviation' );
+			$field_label_mode = '' === $field_label_mode ? $this->get_venue_label_mode() : $this->sanitize_label_mode( $field_label_mode, $this->get_venue_label_mode() );
+			$title_format     = $this->sanitize_title_format( $title_format );
+
+			if ( empty( $team_ids ) ) {
+				return array();
+			}
+
 			$args = array(
 				'post_type'      => 'sp_event',
 				'post_status'    => array( 'publish', 'future' ),
@@ -1101,7 +1483,7 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				'meta_query'     => array(
 					array(
 						'key'     => 'sp_team',
-						'value'   => array( (string) $team_id ),
+						'value'   => array_map( 'strval', $team_ids ),
 						'compare' => 'IN',
 					),
 				),
@@ -1125,6 +1507,14 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				);
 			}
 
+			if ( ! empty( $field_ids ) ) {
+				$tax_query[] = array(
+					'taxonomy' => 'sp_venue',
+					'field'    => 'term_id',
+					'terms'    => $field_ids,
+				);
+			}
+
 			if ( ! empty( $tax_query ) ) {
 				if ( count( $tax_query ) > 1 ) {
 					$tax_query['relation'] = 'AND';
@@ -1143,7 +1533,8 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				}
 
 				$teams = array_values( array_unique( array_map( 'intval', get_post_meta( $event_id, 'sp_team', false ) ) ) );
-				if ( ! in_array( $team_id, $teams, true ) ) {
+				$matching_team_ids = array_values( array_intersect( $team_ids, $teams ) );
+				if ( empty( $matching_team_ids ) ) {
 					continue;
 				}
 
@@ -1152,13 +1543,19 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 					continue;
 				}
 
+				$home_id     = isset( $teams[0] ) ? (int) $teams[0] : 0;
+				$away_id     = isset( $teams[1] ) ? (int) $teams[1] : 0;
+				$context_id  = $is_multi_team ? 0 : $primary_team;
 				$opponent_id = 0;
-				foreach ( $teams as $team_option_id ) {
-					if ( $team_option_id !== $team_id ) {
-						$opponent_id = $team_option_id;
-						break;
+				if ( ! $is_multi_team ) {
+					foreach ( $teams as $team_option_id ) {
+						if ( $team_option_id !== $context_id ) {
+							$opponent_id = $team_option_id;
+							break;
+						}
 					}
 				}
+				$title_data = $this->get_event_title_data( $home_id, $away_id, $team_ids, $team_label_mode, $title_format );
 
 				$venue        = $this->get_event_venue_term( $event_id );
 				$venue_name   = '';
@@ -1167,22 +1564,30 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				if ( $venue ) {
 					$venue_name  = (string) $venue->name;
 					$venue_id    = (int) $venue->term_id;
-					$venue_label = $this->get_configured_venue_label( $venue );
+					$venue_label = $this->get_configured_venue_label( $venue, $field_label_mode );
 				}
 
 				$entries[] = array(
-					'event_id'       => $event_id,
-					'day_key'        => wp_date( 'Y-m-d', $timestamp ),
-					'month_key'      => wp_date( 'Y-m', $timestamp ),
-					'timestamp'      => $timestamp,
-					'is_home'        => isset( $teams[0] ) && $teams[0] === $team_id,
-					'opponent_id'    => $opponent_id,
-					'opponent_name'  => $opponent_id > 0 ? $this->get_team_label( $opponent_id ) : __( 'TBD', 'tonys-sportspress-enhancements' ),
-					'event_time'     => function_exists( 'sp_get_time' ) ? sp_get_time( $event_id ) : get_post_time( get_option( 'time_format' ), false, $event_id, true ),
-					'venue_name'     => $venue_name,
-					'venue_label'    => $venue_label,
-					'venue_id'       => $venue_id,
-					'venue_key'      => $venue_id > 0 ? 'v:' . $venue_id : 'n:' . strtolower( $venue_name ),
+					'event_id'            => $event_id,
+					'day_key'             => wp_date( 'Y-m-d', $timestamp ),
+					'month_key'           => wp_date( 'Y-m', $timestamp ),
+					'timestamp'           => $timestamp,
+					'is_home'             => ! $is_multi_team && $home_id === $context_id,
+					'is_matchup'          => 'matchup' === $title_format,
+					'opponent_id'         => $opponent_id,
+					'opponent_name'       => $opponent_id > 0 ? $this->get_team_label( $opponent_id, $team_label_mode ) : __( 'TBD', 'tonys-sportspress-enhancements' ),
+					'title_team_name'     => $title_data['team_name'],
+					'title_separator'     => $title_data['separator'],
+					'title_opponent_name' => $title_data['opponent_name'],
+					'home_team_id'        => $home_id,
+					'away_team_id'        => $away_id,
+					'home_team_name'      => $home_id > 0 ? $this->get_team_label( $home_id, $team_label_mode ) : __( 'TBD', 'tonys-sportspress-enhancements' ),
+					'away_team_name'      => $away_id > 0 ? $this->get_team_label( $away_id, $team_label_mode ) : __( 'TBD', 'tonys-sportspress-enhancements' ),
+					'event_time'          => function_exists( 'sp_get_time' ) ? sp_get_time( $event_id ) : get_post_time( get_option( 'time_format' ), false, $event_id, true ),
+					'venue_name'          => $venue_name,
+					'venue_label'         => $venue_label,
+					'venue_id'            => $venue_id,
+					'venue_key'           => $venue_id > 0 ? 'v:' . $venue_id : 'n:' . strtolower( $venue_name ),
 				);
 			}
 
@@ -1224,14 +1629,101 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		}
 
 		/**
+		 * Get event title parts for the selected title format.
+		 *
+		 * @param int    $home_id         Home team ID.
+		 * @param int    $away_id         Away team ID.
+		 * @param int[]  $selected_ids    Selected team IDs.
+		 * @param string $team_label_mode Team label mode.
+		 * @param string $title_format    Title format.
+		 * @return array
+		 */
+		private function get_event_title_data( $home_id, $away_id, $selected_ids, $team_label_mode, $title_format ) {
+			$home_id      = absint( $home_id );
+			$away_id      = absint( $away_id );
+			$selected_ids = array_values( array_filter( array_map( 'absint', (array) $selected_ids ) ) );
+			$title_format = $this->sanitize_title_format( $title_format );
+
+			if ( 'matchup' === $title_format ) {
+				return array(
+					'team_name'     => $away_id > 0 ? $this->get_team_label( $away_id, $team_label_mode ) : __( 'TBD', 'tonys-sportspress-enhancements' ),
+					'separator'     => 'at',
+					'opponent_name' => $home_id > 0 ? $this->get_team_label( $home_id, $team_label_mode ) : __( 'TBD', 'tonys-sportspress-enhancements' ),
+				);
+			}
+
+			$context = $this->get_selected_team_context( $home_id, $away_id, $selected_ids );
+			if ( empty( $context['team_id'] ) ) {
+				return array(
+					'team_name'     => '',
+					'separator'     => '',
+					'opponent_name' => '',
+				);
+			}
+
+			$opponent_id = isset( $context['opponent_id'] ) ? (int) $context['opponent_id'] : 0;
+			if ( 1 === count( $selected_ids ) ) {
+				return array(
+					'team_name'     => '',
+					'separator'     => '',
+					'opponent_name' => $opponent_id > 0 ? $this->get_team_label( $opponent_id, $team_label_mode ) : __( 'TBD', 'tonys-sportspress-enhancements' ),
+				);
+			}
+
+			return array(
+				'team_name'     => $this->get_team_label( (int) $context['team_id'], $team_label_mode ),
+				'separator'     => isset( $context['separator'] ) ? (string) $context['separator'] : '',
+				'opponent_name' => $opponent_id > 0 ? $this->get_team_label( $opponent_id, $team_label_mode ) : __( 'TBD', 'tonys-sportspress-enhancements' ),
+			);
+		}
+
+		/**
+		 * Get selected-team perspective for an event.
+		 *
+		 * @param int   $home_id      Home team ID.
+		 * @param int   $away_id      Away team ID.
+		 * @param int[] $selected_ids Selected team IDs.
+		 * @return array
+		 */
+		private function get_selected_team_context( $home_id, $away_id, $selected_ids ) {
+			$home_id      = absint( $home_id );
+			$away_id      = absint( $away_id );
+			$selected_ids = array_values( array_filter( array_map( 'absint', (array) $selected_ids ) ) );
+
+			if ( $away_id > 0 && in_array( $away_id, $selected_ids, true ) ) {
+				return array(
+					'team_id'     => $away_id,
+					'opponent_id' => $home_id,
+					'separator'   => 'at',
+				);
+			}
+
+			if ( $home_id > 0 && in_array( $home_id, $selected_ids, true ) ) {
+				return array(
+					'team_id'     => $home_id,
+					'opponent_id' => $away_id,
+					'separator'   => 'vs',
+				);
+			}
+
+			return array(
+				'team_id'     => 0,
+				'opponent_id' => 0,
+				'separator'   => '',
+			);
+		}
+
+		/**
 		 * Render a single month grid.
 		 *
 		 * @param string $month_key      Month key.
 		 * @param array  $entries_by_day Entries keyed by day.
 		 * @param array  $venue_colors   Venue colors.
 		 * @param array  $team_palette   Team palette.
+		 * @param bool   $is_multi_team  Whether this is a combined team schedule.
+		 * @param bool   $suppress_venue Whether to hide per-event venue labels.
 		 */
-		private function render_month_grid( $month_key, $entries_by_day, $venue_colors, $team_palette ) {
+		private function render_month_grid( $month_key, $entries_by_day, $venue_colors, $team_palette, $is_multi_team = false, $suppress_venue = false ) {
 			$month = DateTimeImmutable::createFromFormat( 'Y-m-d', $month_key . '-01' );
 			if ( ! $month instanceof DateTimeImmutable ) {
 				return;
@@ -1257,15 +1749,26 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			for ( $day = 1; $day <= $days_in_month; $day++ ) {
 				$day_key     = sprintf( '%s-%02d', $month_key, $day );
 				$day_entries = isset( $entries_by_day[ $day_key ] ) ? $entries_by_day[ $day_key ] : array();
-				$day_class   = ! empty( $day_entries ) ? 'day has-events' : 'day no-events';
+				$has_split_title = false;
+				foreach ( $day_entries as $day_entry ) {
+					if ( ! empty( $day_entry['is_matchup'] ) || ! empty( $day_entry['title_team_name'] ) ) {
+						$has_split_title = true;
+						break;
+					}
+				}
+				$day_class = ! empty( $day_entries ) ? 'day has-events' : 'day no-events';
+				if ( $has_split_title ) {
+					$day_class .= ' has-matchups';
+				}
 				$day_style   = '';
 
 				if ( ! empty( $day_entries ) ) {
 					$first_entry       = $day_entries[0];
 					$first_is_home     = ! empty( $first_entry['is_home'] );
+					$first_split_title = ! empty( $first_entry['is_matchup'] ) || ! empty( $first_entry['title_team_name'] );
 					$first_venue_key   = isset( $first_entry['venue_key'] ) && is_string( $first_entry['venue_key'] ) ? $first_entry['venue_key'] : '';
 					$first_venue_color = ( '' !== $first_venue_key && isset( $venue_colors[ $first_venue_key ]['color'] ) ) ? (string) $venue_colors[ $first_venue_key ]['color'] : '';
-					$first_background  = '' !== $first_venue_color ? $first_venue_color : ( $first_is_home ? $team_palette['primary'] : $team_palette['secondary'] );
+					$first_background  = '' !== $first_venue_color ? $first_venue_color : ( $first_is_home || $first_split_title ? $team_palette['primary'] : $team_palette['secondary'] );
 					$first_foreground  = $this->get_readable_text_color( $first_background );
 					$first_background  = $this->ensure_minimum_contrast( $first_background, $first_foreground, self::MIN_WHITE_CONTRAST );
 					$first_foreground  = $this->get_readable_text_color( $first_background );
@@ -1280,13 +1783,15 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 					echo '<div class="events-stack" style="--event-count:' . esc_attr( (string) count( $day_entries ) ) . ';">';
 					foreach ( $day_entries as $entry ) {
 						$is_home          = ! empty( $entry['is_home'] );
-						$event_class      = $is_home ? 'h' : 'a';
+						$is_matchup       = ! empty( $entry['is_matchup'] );
+						$uses_split_title = $is_matchup || ! empty( $entry['title_team_name'] );
+						$event_class      = $uses_split_title ? 'matchup' : ( $is_home ? 'h' : 'a' );
 						$venue_key        = isset( $entry['venue_key'] ) && is_string( $entry['venue_key'] ) ? $entry['venue_key'] : '';
 						$venue_color      = ( '' !== $venue_key && isset( $venue_colors[ $venue_key ]['color'] ) ) ? (string) $venue_colors[ $venue_key ]['color'] : '';
 						$opponent_id      = isset( $entry['opponent_id'] ) ? (int) $entry['opponent_id'] : 0;
-						$logo             = $opponent_id > 0 ? get_the_post_thumbnail( $opponent_id, 'medium', array( 'class' => 'event-logo-img', 'loading' => 'eager', 'decoding' => 'async' ) ) : '';
+						$logo             = ( ! $uses_split_title && $opponent_id > 0 ) ? get_the_post_thumbnail( $opponent_id, 'medium', array( 'class' => 'event-logo-img', 'loading' => 'eager', 'decoding' => 'async' ) ) : '';
 						$has_logo         = '' !== $logo;
-						$event_background = '' !== $venue_color ? $venue_color : ( $is_home ? $team_palette['primary'] : $team_palette['secondary'] );
+						$event_background = '' !== $venue_color ? $venue_color : ( $is_home || $uses_split_title ? $team_palette['primary'] : $team_palette['secondary'] );
 						$event_foreground = $this->get_readable_text_color( $event_background );
 						$event_background = $this->ensure_minimum_contrast( $event_background, $event_foreground, self::MIN_WHITE_CONTRAST );
 						$event_foreground = $this->get_readable_text_color( $event_background );
@@ -1297,13 +1802,22 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 						if ( $has_logo ) {
 							echo wp_kses_post( $logo );
 						} else {
-							echo '<span class="event-name">' . esc_html( isset( $entry['opponent_name'] ) ? (string) $entry['opponent_name'] : '' ) . '</span>';
+							if ( $uses_split_title ) {
+								$team_name     = isset( $entry['title_team_name'] ) ? (string) $entry['title_team_name'] : __( 'TBD', 'tonys-sportspress-enhancements' );
+								$separator     = isset( $entry['title_separator'] ) ? (string) $entry['title_separator'] : 'at';
+								$opponent_name = isset( $entry['title_opponent_name'] ) ? (string) $entry['title_opponent_name'] : __( 'TBD', 'tonys-sportspress-enhancements' );
+								echo '<span class="event-name matchup-name"><span class="matchup-team away-team">' . esc_html( $team_name ) . '</span><span class="matchup-vs">' . esc_html( $separator ) . '</span><span class="matchup-team home-team">' . esc_html( $opponent_name ) . '</span></span>';
+							} else {
+								echo '<span class="event-name">' . esc_html( isset( $entry['title_opponent_name'] ) ? (string) $entry['title_opponent_name'] : '' ) . '</span>';
+							}
 						}
 						echo '</div>';
-						echo '<span class="ha-flag">' . esc_html( $is_home ? 'H' : 'A' ) . '</span>';
+						if ( ! $uses_split_title ) {
+							echo '<span class="ha-flag">' . esc_html( $is_home ? 'H' : 'A' ) . '</span>';
+						}
 						echo '<div class="event-meta">';
 						echo '<div class="event-time">' . esc_html( isset( $entry['event_time'] ) ? (string) $entry['event_time'] : '' ) . '</div>';
-						if ( ! empty( $entry['venue_label'] ) ) {
+						if ( ! $suppress_venue && ! empty( $entry['venue_label'] ) ) {
 							echo '<div class="event-venue" title="' . esc_attr( isset( $entry['venue_name'] ) ? (string) $entry['venue_name'] : '' ) . '">' . esc_html( (string) $entry['venue_label'] ) . '</div>';
 						}
 						echo '</div>';
@@ -1333,9 +1847,32 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 * @param int $team_id Team ID.
 		 * @return string
 		 */
-		private function get_team_label( $team_id ) {
-			if ( function_exists( 'sp_team_abbreviation' ) ) {
-				$label = (string) sp_team_abbreviation( $team_id );
+		private function get_team_label( $team_id, $mode = 'abbreviation' ) {
+			$mode = $this->sanitize_label_mode( $mode, 'abbreviation' );
+
+			if ( 'shortname' === $mode ) {
+				if ( function_exists( 'sp_team_short_name' ) ) {
+					$label = trim( (string) sp_team_short_name( $team_id ) );
+					if ( '' !== $label ) {
+						return $label;
+					}
+				}
+
+				$label = trim( (string) get_post_meta( $team_id, 'sp_short_name', true ) );
+				if ( '' !== $label ) {
+					return $label;
+				}
+			}
+
+			if ( 'abbreviation' === $mode ) {
+				if ( function_exists( 'sp_team_abbreviation' ) ) {
+					$label = trim( (string) sp_team_abbreviation( $team_id ) );
+					if ( '' !== $label ) {
+						return $label;
+					}
+				}
+
+				$label = trim( (string) get_post_meta( $team_id, 'sp_abbreviation', true ) );
 				if ( '' !== $label ) {
 					return $label;
 				}
@@ -1369,21 +1906,21 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 * @param WP_Term $venue Venue term.
 		 * @return string
 		 */
-		private function get_configured_venue_label( $venue ) {
+		private function get_configured_venue_label( $venue, $mode = '' ) {
 			$full_name = isset( $venue->name ) ? trim( (string) $venue->name ) : '';
 			if ( '' === $full_name || ! isset( $venue->term_id ) ) {
 				return '';
 			}
 
 			$term_id = (int) $venue->term_id;
-			$mode    = $this->get_venue_label_mode();
+			$mode    = '' === $mode ? $this->get_venue_label_mode() : $this->sanitize_label_mode( $mode, $this->get_venue_label_mode() );
 
 			if ( 'abbreviation' === $mode ) {
 				$abbreviation = trim( (string) get_term_meta( $term_id, 'tse_abbreviation', true ) );
 				return '' !== $abbreviation ? $abbreviation : $full_name;
 			}
 
-			if ( 'short_name' === $mode ) {
+			if ( 'shortname' === $mode ) {
 				$short_name = trim( (string) get_term_meta( $term_id, 'tse_short_name', true ) );
 				return '' !== $short_name ? $short_name : $full_name;
 			}
@@ -1397,15 +1934,27 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 		 * @param string $venue_name    Venue name.
 		 * @param int    $season_id     Season ID.
 		 * @param int    $venue_id      Venue ID.
-		 * @param string $team_primary  Team primary color.
+		 * @param string $team_primary        Team primary color.
+		 * @param bool   $ignore_team_primary Whether to ignore venue primary flags.
 		 * @return string
 		 */
-		private function get_venue_color( $venue_name, $season_id, $venue_id, $team_primary ) {
-			if ( $this->should_use_team_primary_for_venue( $season_id, $venue_id ) && '' !== $this->sanitize_color( $team_primary ) ) {
+		private function get_venue_color( $venue_name, $season_id, $venue_id, $team_primary, $ignore_team_primary = false ) {
+			$custom = $this->get_custom_venue_color( $season_id, $venue_id );
+			if ( $ignore_team_primary && '' !== $custom ) {
+				return $custom;
+			}
+
+			if ( $ignore_team_primary ) {
+				$suggested = $this->get_suggested_venue_color( $season_id, $venue_id );
+				if ( '' !== $suggested ) {
+					return $suggested;
+				}
+			}
+
+			if ( ! $ignore_team_primary && $this->should_use_team_primary_for_venue( $season_id, $venue_id ) && '' !== $this->sanitize_color( $team_primary ) ) {
 				return $this->sanitize_color( $team_primary );
 			}
 
-			$custom = $this->get_custom_venue_color( $season_id, $venue_id );
 			if ( '' !== $custom ) {
 				return $custom;
 			}
@@ -1414,6 +1963,36 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$index   = abs( crc32( strtolower( $venue_name ) ) ) % count( $palette );
 
 			return $palette[ $index ];
+		}
+
+		/**
+		 * Get the settings-screen suggested venue color for a season.
+		 *
+		 * @param int $season_id Season ID.
+		 * @param int $venue_id  Venue ID.
+		 * @return string
+		 */
+		private function get_suggested_venue_color( $season_id, $venue_id ) {
+			if ( $season_id <= 0 || $venue_id <= 0 ) {
+				return '';
+			}
+
+			$venues = $this->get_venues_for_season( $season_id );
+			if ( empty( $venues ) ) {
+				return '';
+			}
+
+			$palette_count = count( $this->suggested_palette );
+			foreach ( $venues as $index => $venue ) {
+				if ( ! is_array( $venue ) || ! isset( $venue['id'] ) || (int) $venue['id'] !== (int) $venue_id ) {
+					continue;
+				}
+
+				$suggested = isset( $this->suggested_palette[ $index % max( 1, $palette_count ) ] ) ? $this->suggested_palette[ $index % max( 1, $palette_count ) ] : '';
+				return '' !== $suggested ? $this->adjust_for_white_text( $suggested, self::MIN_WHITE_CONTRAST ) : '';
+			}
+
+			return '';
 		}
 
 		/**
@@ -1610,6 +2189,21 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 				'primary'   => $primary,
 				'secondary' => $secondary,
 				'accent'    => $accent,
+				'ink'       => '#111827',
+				'muted_ink' => '#334155',
+			);
+		}
+
+		/**
+		 * Get neutral printable colors for combined-team schedules.
+		 *
+		 * @return array
+		 */
+		private function get_default_printable_palette() {
+			return array(
+				'primary'   => '#334155',
+				'secondary' => '#64748B',
+				'accent'    => '#475569',
 				'ink'       => '#111827',
 				'muted_ink' => '#334155',
 			);
@@ -1841,7 +2435,9 @@ if ( ! class_exists( 'Tony_Sportspress_Printable_Calendars' ) ) {
 			$rows = (int) ceil( $count / $columns );
 
 			$font_scale = 1.0;
-			if ( $count >= 3 && $count <= 4 ) {
+			if ( $count == 1 ) {
+				$font_scale = 1.1;
+			} elseif ( $count >= 3 && $count <= 4 ) {
 				$font_scale = 0.9;
 			} elseif ( $count >= 5 && $count <= 6 ) {
 				$font_scale = 0.78;
