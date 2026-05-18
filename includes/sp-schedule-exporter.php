@@ -87,10 +87,10 @@ function tse_sp_schedule_exporter_render_shortcode() {
 	$season_id = tse_sp_schedule_exporter_resolve_season_id( $seasons );
 	$teams     = tse_sp_schedule_exporter_get_teams( $league_id, $season_id );
 	$team_ids  = tse_sp_schedule_exporter_resolve_team_ids( $teams );
-	$fields    = tse_sp_schedule_exporter_get_fields();
-	$field_id  = tse_sp_schedule_exporter_resolve_field_id( $fields );
-	$export_type = tse_sp_schedule_exporter_resolve_export_type();
-	$subformat   = tse_sp_schedule_exporter_resolve_subformat();
+	$fields       = tse_sp_schedule_exporter_get_fields();
+	$field_id     = tse_sp_schedule_exporter_resolve_field_id( $fields );
+	$export_type  = tse_sp_schedule_exporter_resolve_export_type();
+	$subformat    = tse_sp_schedule_exporter_resolve_subformat();
 	$title_format = tse_sp_schedule_exporter_resolve_title_format();
 
 	if ( empty( $teams ) ) {
@@ -197,8 +197,15 @@ function tse_sp_schedule_exporter_render_shortcode() {
 		<?php tse_sp_schedule_exporter_render_column_picker( 'team', 'public', $subformat ); ?>
 
 		<?php
-		$csv_url = tse_sp_event_export_get_feed_url( array( 'team_id' => $team_ids, 'season_id' => $season_id, 'league_id' => $league_id, 'field_id' => $field_id, 'format' => $subformat, 'title_format' => $title_format ), 'csv' );
-		$ics_url = tse_sp_event_export_get_feed_url( array( 'team_id' => $team_ids, 'season_id' => $season_id, 'league_id' => $league_id, 'field_id' => $field_id, 'title_format' => $title_format ), 'ics' );
+		$feed_args = array(
+			'team_id'      => $team_ids,
+			'season_id'    => $season_id,
+			'league_id'    => $league_id,
+			'field_id'     => $field_id,
+			'title_format' => $title_format,
+		);
+		$csv_url = tse_sp_event_export_get_feed_url( array_merge( $feed_args, array( 'format' => $subformat ) ), 'csv' );
+		$ics_url = tse_sp_event_export_get_feed_url( $feed_args, 'ics' );
 		$print_url = tse_sp_schedule_exporter_get_printable_url( $team_ids, $season_id, 'letter', $league_id, false, $field_id, false, 'name', 'name', $title_format );
 		$current_url = tse_sp_schedule_exporter_get_output_url( $export_type, $csv_url, $ics_url, $print_url );
 		?>
@@ -588,7 +595,7 @@ function tse_sp_schedule_exporter_resolve_title_format() {
 function tse_sp_schedule_exporter_resolve_title_format_value( $value ) {
 	$value = sanitize_key( (string) $value );
 
-	return in_array( $value, array( 'selected_first', 'matchup' ), true ) ? $value : 'selected_first';
+	return in_array( $value, tse_sp_event_export_get_title_formats(), true ) ? $value : 'selected_first';
 }
 
 /**

@@ -94,6 +94,15 @@ function tse_sp_event_export_get_default_columns( $format ) {
 }
 
 /**
+ * Get supported event title formats.
+ *
+ * @return string[]
+ */
+function tse_sp_event_export_get_title_formats() {
+	return array( 'selected_first', 'matchup' );
+}
+
+/**
  * Sanitize event title format.
  *
  * @param string $format Raw title format.
@@ -102,7 +111,7 @@ function tse_sp_event_export_get_default_columns( $format ) {
 function tse_sp_event_export_sanitize_title_format( $format ) {
 	$format = sanitize_key( (string) $format );
 
-	return in_array( $format, array( 'selected_first', 'matchup' ), true ) ? $format : 'selected_first';
+	return in_array( $format, tse_sp_event_export_get_title_formats(), true ) ? $format : 'selected_first';
 }
 
 /**
@@ -187,26 +196,26 @@ function tse_sp_event_export_parse_id_list( $value ) {
  * @return array
  */
 function tse_sp_event_export_normalize_request_args( $source = null ) {
-	$source = is_array( $source ) ? $source : $_GET;
-	$format = isset( $source['format'] ) ? tse_sp_event_export_sanitize_format( wp_unslash( $source['format'] ) ) : 'matchup';
-	$team_ids = isset( $source['team_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['team_id'] ) ) : array();
-	$season_ids = isset( $source['season_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['season_id'] ) ) : array();
-	$league_ids = isset( $source['league_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['league_id'] ) ) : array();
-	$field_ids = isset( $source['field_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['field_id'] ) ) : array();
+	$source       = is_array( $source ) ? $source : $_GET;
+	$format       = isset( $source['format'] ) ? tse_sp_event_export_sanitize_format( wp_unslash( $source['format'] ) ) : 'matchup';
+	$team_ids     = isset( $source['team_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['team_id'] ) ) : array();
+	$season_ids   = isset( $source['season_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['season_id'] ) ) : array();
+	$league_ids   = isset( $source['league_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['league_id'] ) ) : array();
+	$field_ids    = isset( $source['field_id'] ) ? tse_sp_event_export_parse_id_list( wp_unslash( $source['field_id'] ) ) : array();
 	$title_format = isset( $source['title_format'] ) ? tse_sp_event_export_sanitize_title_format( wp_unslash( $source['title_format'] ) ) : 'selected_first';
 
 	return array(
-		'team_id'   => isset( $team_ids[0] ) ? $team_ids[0] : 0,
-		'team_ids'  => $team_ids,
-		'season_id' => isset( $season_ids[0] ) ? $season_ids[0] : 0,
-		'season_ids'=> $season_ids,
-		'league_id' => isset( $league_ids[0] ) ? $league_ids[0] : 0,
-		'league_ids'=> $league_ids,
-		'field_id'  => isset( $field_ids[0] ) ? $field_ids[0] : 0,
-		'field_ids' => $field_ids,
-		'format'    => $format,
+		'team_id'      => isset( $team_ids[0] ) ? $team_ids[0] : 0,
+		'team_ids'     => $team_ids,
+		'season_id'    => isset( $season_ids[0] ) ? $season_ids[0] : 0,
+		'season_ids'   => $season_ids,
+		'league_id'    => isset( $league_ids[0] ) ? $league_ids[0] : 0,
+		'league_ids'   => $league_ids,
+		'field_id'     => isset( $field_ids[0] ) ? $field_ids[0] : 0,
+		'field_ids'    => $field_ids,
+		'format'       => $format,
 		'title_format' => $title_format,
-		'columns'   => isset( $source['columns'] ) ? tse_sp_event_export_sanitize_columns( $format, wp_unslash( $source['columns'] ) ) : tse_sp_event_export_get_default_columns( $format ),
+		'columns'      => isset( $source['columns'] ) ? tse_sp_event_export_sanitize_columns( $format, wp_unslash( $source['columns'] ) ) : tse_sp_event_export_get_default_columns( $format ),
 	);
 }
 
@@ -309,8 +318,8 @@ function tse_sp_event_export_query_posts( $filters ) {
 function tse_sp_event_export_get_events( $filters ) {
 	$selected_ids = isset( $filters['team_ids'] ) && is_array( $filters['team_ids'] ) ? array_values( array_filter( array_map( 'absint', $filters['team_ids'] ) ) ) : array();
 	$title_format = tse_sp_event_export_sanitize_title_format( isset( $filters['title_format'] ) ? $filters['title_format'] : 'selected_first' );
-	$query_posts = tse_sp_event_export_query_posts( $filters );
-	$events     = array();
+	$query_posts  = tse_sp_event_export_query_posts( $filters );
+	$events       = array();
 
 	foreach ( $query_posts as $event ) {
 		$event_id = $event instanceof WP_Post ? (int) $event->ID : 0;
@@ -583,10 +592,10 @@ function tse_sp_event_export_fold_ical_line( $line ) {
  * @return string
  */
 function tse_sp_event_export_get_ical_summary( $event, $filters ) {
-	$format   = tse_sp_event_export_sanitize_format( isset( $filters['format'] ) ? $filters['format'] : 'matchup' );
-	$team_ids = isset( $filters['team_ids'] ) && is_array( $filters['team_ids'] ) ? array_values( array_filter( array_map( 'absint', $filters['team_ids'] ) ) ) : array();
+	$format       = tse_sp_event_export_sanitize_format( isset( $filters['format'] ) ? $filters['format'] : 'matchup' );
+	$team_ids     = isset( $filters['team_ids'] ) && is_array( $filters['team_ids'] ) ? array_values( array_filter( array_map( 'absint', $filters['team_ids'] ) ) ) : array();
 	$title_format = tse_sp_event_export_sanitize_title_format( isset( $filters['title_format'] ) ? $filters['title_format'] : 'selected_first' );
-	$team_id  = isset( $team_ids[0] ) ? $team_ids[0] : 0;
+	$team_id      = isset( $team_ids[0] ) ? $team_ids[0] : 0;
 
 	if ( 'team' === $format && $team_id > 0 ) {
 		$teams   = array_values( array_unique( array_map( 'intval', get_post_meta( $event->ID, 'sp_team', false ) ) ) );
@@ -1019,14 +1028,14 @@ function tse_sp_event_export_get_feed_url( $args = array(), $feed_type = 'csv' )
 	$filters = tse_sp_event_export_normalize_request_args( $args );
 	$feed    = 'ics' === sanitize_key( $feed_type ) ? 'sp-ics' : 'sp-csv';
 	$query   = array(
-		'feed'      => $feed,
-		'format'    => $filters['format'],
-		'team_id'   => ! empty( $filters['team_ids'] ) ? implode( ',', $filters['team_ids'] ) : '',
-		'season_id' => ! empty( $filters['season_ids'] ) ? implode( ',', $filters['season_ids'] ) : '',
-		'league_id' => ! empty( $filters['league_ids'] ) ? implode( ',', $filters['league_ids'] ) : '',
-		'field_id'  => ! empty( $filters['field_ids'] ) ? implode( ',', $filters['field_ids'] ) : '',
+		'feed'         => $feed,
+		'format'       => $filters['format'],
+		'team_id'      => ! empty( $filters['team_ids'] ) ? implode( ',', $filters['team_ids'] ) : '',
+		'season_id'    => ! empty( $filters['season_ids'] ) ? implode( ',', $filters['season_ids'] ) : '',
+		'league_id'    => ! empty( $filters['league_ids'] ) ? implode( ',', $filters['league_ids'] ) : '',
+		'field_id'     => ! empty( $filters['field_ids'] ) ? implode( ',', $filters['field_ids'] ) : '',
 		'title_format' => isset( $filters['title_format'] ) ? tse_sp_event_export_sanitize_title_format( $filters['title_format'] ) : 'selected_first',
-		'columns'   => implode( ',', $filters['columns'] ),
+		'columns'      => implode( ',', $filters['columns'] ),
 	);
 
 	return add_query_arg( array_filter( $query, 'strlen' ), home_url( '/' ) );
