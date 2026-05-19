@@ -80,8 +80,8 @@ if ( ! class_exists( 'Tony_Sportspress_GitHub_Updater' ) ) {
 				return $transient;
 			}
 
-			$remote_version = $this->normalize_version( $release['version'] );
-			$current_version = $this->normalize_version( TONY_SPORTSPRESS_ENHANCEMENTS_VERSION );
+			$remote_version  = $this->normalize_version( $release['version'] );
+			$current_version = $this->get_current_version( $transient );
 
 			$plugin_data = (object) array(
 				'id'            => $release['url'],
@@ -197,11 +197,35 @@ if ( ! class_exists( 'Tony_Sportspress_GitHub_Updater' ) ) {
 				return;
 			}
 
-			if ( empty( $hook_extra['plugins'] ) || ! in_array( $this->plugin_basename, (array) $hook_extra['plugins'], true ) ) {
+			$plugins = isset( $hook_extra['plugins'] ) ? (array) $hook_extra['plugins'] : array();
+			if ( isset( $hook_extra['plugin'] ) ) {
+				$plugins[] = (string) $hook_extra['plugin'];
+			}
+
+			if ( ! in_array( $this->plugin_basename, array_unique( $plugins ), true ) ) {
 				return;
 			}
 
 			delete_site_transient( $this->cache_key );
+		}
+
+		/**
+		 * Gets the installed plugin version from WordPress' update check data.
+		 *
+		 * @param stdClass $transient Update transient.
+		 * @return string
+		 */
+		private function get_current_version( $transient ) {
+			if (
+				is_object( $transient )
+				&& isset( $transient->checked )
+				&& is_array( $transient->checked )
+				&& isset( $transient->checked[ $this->plugin_basename ] )
+			) {
+				return $this->normalize_version( $transient->checked[ $this->plugin_basename ] );
+			}
+
+			return $this->normalize_version( TONY_SPORTSPRESS_ENHANCEMENTS_VERSION );
 		}
 
 		/**
