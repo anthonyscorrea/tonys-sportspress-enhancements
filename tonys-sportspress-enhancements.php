@@ -8,13 +8,13 @@
  * Text Domain:     tonys-sportspress-enhancements
  * Domain Path:     /languages
  * Update URI:      https://github.com/anthonyscorrea/tonys-sportspress-enhancements
- * Version:         0.1.15
+ * Version:         0.1.16
  *
  * @package         Tonys_Sportspress_Enhancements
  */
 
 if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION' ) ) {
-	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION', '0.1.15' );
+	define( 'TONY_SPORTSPRESS_ENHANCEMENTS_VERSION', '0.1.16' );
 }
 
 if ( ! defined( 'TONY_SPORTSPRESS_ENHANCEMENTS_FILE' ) ) {
@@ -47,6 +47,7 @@ require_once plugin_dir_path(__FILE__) . 'includes/sp-event-team-ordering.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-printable-calendars.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-url-builder.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-webhooks.php';
+require_once plugin_dir_path(__FILE__) . 'includes/sp-rest-api.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-schedule-exporter.php';
 require_once plugin_dir_path(__FILE__) . 'includes/sp-venue-meta.php';
 
