@@ -233,6 +233,58 @@ class Test_SP_Webhooks extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Schedule snapshots should compare the canonical instant, not duplicated ISO strings.
+	 */
+	public function test_schedule_snapshot_signature_ignores_stale_iso_strings_for_same_timestamp() {
+		$webhooks = Tony_Sportspress_Webhooks::instance();
+		$method   = new ReflectionMethod( $webhooks, 'schedule_snapshots_match' );
+		$method->setAccessible( true );
+
+		$left = array(
+			'timestamp' => 1714005000,
+			'local_iso' => '2024-04-24T18:30:00-05:00',
+			'gmt_iso'   => '2024-04-24T23:30:00+00:00',
+			'status'    => 'On time',
+			'venue'     => array(
+				'name' => 'Winnemac Park',
+			),
+			'teams'     => array(
+				array( 'name' => 'Hawks' ),
+				array( 'name' => 'Electrons' ),
+			),
+		);
+		$right = $left;
+		$right['local_iso'] = '2024-04-24T19:30:00-05:00';
+		$right['gmt_iso']   = '2024-04-25T00:30:00+00:00';
+
+		$this->assertTrue( $method->invoke( $webhooks, $left, $right ) );
+	}
+
+	/**
+	 * Post updates should only queue schedule work when the scheduled instant changes.
+	 */
+	public function test_schedule_times_match_uses_canonical_timestamp() {
+		$webhooks = Tony_Sportspress_Webhooks::instance();
+		$method   = new ReflectionMethod( $webhooks, 'schedule_times_match' );
+		$method->setAccessible( true );
+
+		$left = array(
+			'timestamp' => 1714005000,
+			'local_iso' => '2024-04-24T18:30:00-05:00',
+		);
+		$right = array(
+			'timestamp' => 1714005000,
+			'local_iso' => '2024-04-24T19:30:00-05:00',
+		);
+		$changed = array(
+			'timestamp' => 1714008600,
+		);
+
+		$this->assertTrue( $method->invoke( $webhooks, $left, $right ) );
+		$this->assertFalse( $method->invoke( $webhooks, $left, $changed ) );
+	}
+
+	/**
 	 * Status snapshots should expose a display label and keep the raw SportsPress key.
 	 */
 	public function test_build_change_snapshot_normalizes_status_label_and_slug() {
@@ -244,6 +296,60 @@ class Test_SP_Webhooks extends WP_UnitTestCase {
 
 		$this->assertSame( 'Canceled', $snapshot['status'] );
 		$this->assertSame( 'cancelled', $snapshot['sp_status'] );
+	}
+
+	/**
+	 * Change snapshots should rebuild display fields from the canonical timestamp.
+	 */
+	public function test_build_change_snapshot_rebuilds_stale_schedule_display_fields() {
+		$webhooks = Tony_Sportspress_Webhooks::instance();
+		$method   = new ReflectionMethod( $webhooks, 'build_change_snapshot' );
+		$method->setAccessible( true );
+
+		$snapshot = $method->invoke(
+			$webhooks,
+			array(
+				'timestamp'     => 1714005000,
+				'time'          => '1:00 PM',
+				'local_display' => '2024-04-24 1:00 PM CDT',
+			),
+			array(),
+			array(),
+			'ok'
+		);
+
+		$this->assertSame( '7:30 PM', $snapshot['time'] );
+		$this->assertSame( '2024-04-24 7:30 PM CDT', $snapshot['local_display'] );
+	}
+
+	/**
+	 * Event schedule timestamps should be based on the database local post date.
+	 */
+	public function test_event_schedule_from_post_uses_database_post_date_timestamp() {
+		$webhooks = Tony_Sportspress_Webhooks::instance();
+		$method   = new ReflectionMethod( $webhooks, 'event_schedule_from_post' );
+		$method->setAccessible( true );
+
+		$previous_timezone = get_option( 'timezone_string' );
+		update_option( 'timezone_string', 'America/Chicago' );
+
+		$post_id = self::factory()->post->create(
+			array(
+				'post_type'     => 'sp_event',
+				'post_status'   => 'publish',
+				'post_date'     => '2024-04-24 19:30:00',
+				'post_date_gmt' => '2024-04-24 23:30:00',
+			)
+		);
+
+		$schedule = $method->invoke( $webhooks, get_post( $post_id ) );
+
+		update_option( 'timezone_string', $previous_timezone );
+
+		$this->assertSame( 1714005000, $schedule['timestamp'] );
+		$this->assertSame( '7:30 PM', $schedule['time'] );
+		$this->assertSame( '2024-04-24 7:30 PM CDT', $schedule['local_display'] );
+		$this->assertSame( '2024-04-24T23:30:00+00:00', $schedule['gmt_iso'] );
 	}
 
 	/**

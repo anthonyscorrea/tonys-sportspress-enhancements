@@ -21,6 +21,16 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		const OPTION_KEY = 'tse_sportspress_webhooks_settings';
 
 		/**
+		 * Webhook delivery log option key.
+		 */
+		const LOG_OPTION_KEY = 'tse_sportspress_webhooks_log';
+
+		/**
+		 * Maximum number of webhook log entries to keep.
+		 */
+		const LOG_LIMIT = 75;
+
+		/**
 		 * Webhook settings group.
 		 */
 		const OPTION_GROUP = 'tse_sportspress_webhooks';
@@ -111,6 +121,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 				add_filter( 'option_page_capability_' . self::OPTION_GROUP, array( $this, 'settings_capability' ) );
 				add_action( 'wp_ajax_tse_sp_webhook_test', array( $this, 'handle_test_webhook_ajax' ) );
 				add_action( 'admin_post_tse_sp_reset_schedule_snapshots', array( $this, 'handle_reset_schedule_snapshots_admin' ) );
+				add_action( 'admin_post_tse_sp_clear_webhook_log', array( $this, 'handle_clear_webhook_log_admin' ) );
 			}
 		}
 
@@ -237,6 +248,10 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 				echo '</p></div>';
 			}
 
+			if ( isset( $_GET['tse_sp_webhook_log'] ) && 'cleared' === sanitize_key( wp_unslash( $_GET['tse_sp_webhook_log'] ) ) ) {
+				echo '<div class="notice notice-success inline"><p>' . esc_html__( 'Webhook activity log cleared.', 'tonys-sportspress-enhancements' ) . '</p></div>';
+			}
+
 			echo '<div style="margin:18px 0 12px;padding:16px 18px;border:1px solid #dcdcde;background:#fff;max-width:1100px;">';
 			echo '<strong>' . esc_html__( 'Schedule Snapshot Tools', 'tonys-sportspress-enhancements' ) . '</strong>';
 			echo '<p style="margin:8px 0 0;">' . esc_html__( 'Reset stored schedule snapshots for existing events and immediately save a fresh baseline from the current event data.', 'tonys-sportspress-enhancements' ) . '</p>';
@@ -244,6 +259,8 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			echo '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=tse_sp_reset_schedule_snapshots' ), 'tse_sp_reset_schedule_snapshots' ) ) . '" class="button button-secondary" onclick="return window.confirm(' . wp_json_encode( __( 'Reset and rebuild webhook schedule snapshots for all SportsPress events?', 'tonys-sportspress-enhancements' ) ) . ');">' . esc_html__( 'Reset And Rebuild Snapshots', 'tonys-sportspress-enhancements' ) . '</a>';
 			echo '</p>';
 			echo '</div>';
+
+			$this->render_webhook_log();
 
 			echo '<div style="margin:18px 0 12px;padding:16px 18px;border:1px solid #dcdcde;background:#fff;max-width:1100px;">';
 			echo '<strong>' . esc_html__( 'Message template variables', 'tonys-sportspress-enhancements' ) . '</strong>';
@@ -293,6 +310,10 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			}
 
 			if ( ! $this->should_handle_event_post( $post_id, $post_after ) ) {
+				return;
+			}
+
+			if ( $this->schedule_times_match( $this->event_schedule_from_post( $post_before ), $this->event_schedule_from_post( $post_after ) ) ) {
 				return;
 			}
 
@@ -699,6 +720,74 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		}
 
 		/**
+		 * Render recent webhook delivery log entries.
+		 *
+		 * @return void
+		 */
+		private function render_webhook_log() {
+			$entries = $this->get_webhook_log();
+
+			echo '<div style="margin:18px 0 12px;padding:16px 18px;border:1px solid #dcdcde;background:#fff;max-width:1100px;">';
+			echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">';
+			echo '<strong>' . esc_html__( 'Recent Webhook Activity', 'tonys-sportspress-enhancements' ) . '</strong>';
+			if ( ! empty( $entries ) ) {
+				echo '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=tse_sp_clear_webhook_log' ), 'tse_sp_clear_webhook_log' ) ) . '" class="button button-secondary" onclick="return window.confirm(' . wp_json_encode( __( 'Clear webhook activity log?', 'tonys-sportspress-enhancements' ) ) . ');">' . esc_html__( 'Clear Log', 'tonys-sportspress-enhancements' ) . '</a>';
+			}
+			echo '</div>';
+			echo '<p class="description" style="margin:0 0 12px;">' . esc_html__( 'Shows the most recent webhook delivery attempts, including the trigger, event, destination row, status, and compact before/after change data.', 'tonys-sportspress-enhancements' ) . '</p>';
+
+			if ( empty( $entries ) ) {
+				echo '<p style="margin:0;">' . esc_html__( 'No webhook activity has been logged yet.', 'tonys-sportspress-enhancements' ) . '</p>';
+				echo '</div>';
+				return;
+			}
+
+			echo '<table class="widefat striped" style="max-width:100%;">';
+			echo '<thead><tr>';
+			echo '<th>' . esc_html__( 'When', 'tonys-sportspress-enhancements' ) . '</th>';
+			echo '<th>' . esc_html__( 'Trigger', 'tonys-sportspress-enhancements' ) . '</th>';
+			echo '<th>' . esc_html__( 'Event', 'tonys-sportspress-enhancements' ) . '</th>';
+			echo '<th>' . esc_html__( 'Webhook', 'tonys-sportspress-enhancements' ) . '</th>';
+			echo '<th>' . esc_html__( 'Result', 'tonys-sportspress-enhancements' ) . '</th>';
+			echo '<th>' . esc_html__( 'Change Data', 'tonys-sportspress-enhancements' ) . '</th>';
+			echo '</tr></thead><tbody>';
+
+			foreach ( $entries as $entry ) {
+				$event_id     = isset( $entry['event_id'] ) ? absint( $entry['event_id'] ) : 0;
+				$edit_url     = $event_id > 0 ? get_edit_post_link( $event_id, 'raw' ) : '';
+				$status       = isset( $entry['status'] ) ? (string) $entry['status'] : '';
+				$status_label = 'success' === $status ? __( 'Sent', 'tonys-sportspress-enhancements' ) : __( 'Failed', 'tonys-sportspress-enhancements' );
+				$result       = $status_label;
+
+				if ( isset( $entry['status_code'] ) && (int) $entry['status_code'] > 0 ) {
+					$result .= ' HTTP ' . (int) $entry['status_code'];
+				}
+
+				if ( ! empty( $entry['error_message'] ) ) {
+					$result .= ': ' . (string) $entry['error_message'];
+				}
+
+				echo '<tr>';
+				echo '<td>' . esc_html( isset( $entry['occurred_at'] ) ? (string) $entry['occurred_at'] : '' ) . '</td>';
+				echo '<td><code>' . esc_html( isset( $entry['trigger'] ) ? (string) $entry['trigger'] : '' ) . '</code></td>';
+				echo '<td>';
+				if ( '' !== $edit_url ) {
+					echo '<a href="' . esc_url( $edit_url ) . '">' . esc_html( isset( $entry['event_title'] ) ? (string) $entry['event_title'] : '#' . $event_id ) . '</a>';
+				} else {
+					echo esc_html( isset( $entry['event_title'] ) ? (string) $entry['event_title'] : '' );
+				}
+				echo '</td>';
+				echo '<td>' . esc_html( isset( $entry['webhook_name'] ) ? (string) $entry['webhook_name'] : '' ) . '<br><code>' . esc_html( isset( $entry['provider'] ) ? (string) $entry['provider'] : '' ) . '</code></td>';
+				echo '<td>' . esc_html( $result ) . '</td>';
+				echo '<td><pre style="white-space:pre-wrap;margin:0;max-width:360px;">' . esc_html( wp_json_encode( isset( $entry['changes'] ) && is_array( $entry['changes'] ) ? $entry['changes'] : array() ) ) . '</pre></td>';
+				echo '</tr>';
+			}
+
+			echo '</tbody></table>';
+			echo '</div>';
+		}
+
+		/**
 		 * Render a collapsible template-tag reference.
 		 *
 		 * @return void
@@ -944,6 +1033,107 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		}
 
 		/**
+		 * Get recent webhook activity log entries.
+		 *
+		 * @return array[]
+		 */
+		private function get_webhook_log() {
+			$entries = get_option( self::LOG_OPTION_KEY, array() );
+			if ( ! is_array( $entries ) ) {
+				return array();
+			}
+
+			return array_values( array_filter( $entries, 'is_array' ) );
+		}
+
+		/**
+		 * Append one bounded webhook activity log entry.
+		 *
+		 * @param string         $trigger Trigger slug.
+		 * @param int            $post_id Event post ID.
+		 * @param array          $webhook Webhook configuration.
+		 * @param array          $context Render context.
+		 * @param array|WP_Error $result  Delivery result.
+		 * @return void
+		 */
+		private function append_webhook_log( $trigger, $post_id, $webhook, $context, $result ) {
+			$entries = $this->get_webhook_log();
+			$entry   = array(
+				'id'            => str_replace( '.', '', uniqid( 'tse_', true ) ),
+				'occurred_at'   => current_time( 'mysql' ),
+				'timestamp'     => time(),
+				'trigger'       => sanitize_key( (string) $trigger ),
+				'event_id'      => absint( $post_id ),
+				'event_title'   => isset( $context['event']['title'] ) ? sanitize_text_field( (string) $context['event']['title'] ) : '',
+				'webhook_id'    => isset( $webhook['id'] ) ? sanitize_key( (string) $webhook['id'] ) : '',
+				'webhook_name'  => isset( $webhook['name'] ) ? sanitize_text_field( (string) $webhook['name'] ) : '',
+				'provider'      => isset( $webhook['provider'] ) ? sanitize_key( (string) $webhook['provider'] ) : 'generic_json',
+				'status'        => is_wp_error( $result ) ? 'error' : 'success',
+				'status_code'   => is_array( $result ) && isset( $result['status_code'] ) ? (int) $result['status_code'] : 0,
+				'error_message' => is_wp_error( $result ) ? sanitize_text_field( $result->get_error_message() ) : '',
+				'changes'       => $this->summarize_webhook_log_changes( is_array( $context ) ? $context : array() ),
+			);
+
+			array_unshift( $entries, $entry );
+			$entries = array_slice( $entries, 0, self::LOG_LIMIT );
+
+			update_option( self::LOG_OPTION_KEY, $entries, false );
+		}
+
+		/**
+		 * Build a compact, non-sensitive change summary for the activity log.
+		 *
+		 * @param array $context Render context.
+		 * @return array
+		 */
+		private function summarize_webhook_log_changes( $context ) {
+			$changes = isset( $context['changes'] ) && is_array( $context['changes'] ) ? $context['changes'] : array();
+			$summary = array();
+
+			if ( isset( $context['trigger']['key'] ) && 'event_results_updated' === (string) $context['trigger']['key'] ) {
+				return array(
+					'results_summary' => isset( $context['results']['summary'] ) ? sanitize_text_field( (string) $context['results']['summary'] ) : '',
+				);
+			}
+
+			foreach ( array( 'previous', 'current' ) as $side ) {
+				if ( empty( $changes[ $side ] ) || ! is_array( $changes[ $side ] ) ) {
+					continue;
+				}
+
+				$summary[ $side ] = $this->summarize_webhook_log_snapshot( $changes[ $side ] );
+			}
+
+			if ( empty( $summary ) && isset( $context['results']['summary'] ) && '' !== (string) $context['results']['summary'] ) {
+				$summary['results_summary'] = sanitize_text_field( (string) $context['results']['summary'] );
+			}
+
+			return $summary;
+		}
+
+		/**
+		 * Build a compact snapshot summary for the activity log.
+		 *
+		 * @param array $snapshot Snapshot data.
+		 * @return array
+		 */
+		private function summarize_webhook_log_snapshot( $snapshot ) {
+			$venue = isset( $snapshot['venue'] ) && is_array( $snapshot['venue'] ) ? $snapshot['venue'] : array();
+			$home  = isset( $snapshot['home_team'] ) && is_array( $snapshot['home_team'] ) ? $snapshot['home_team'] : array();
+			$away  = isset( $snapshot['away_team'] ) && is_array( $snapshot['away_team'] ) ? $snapshot['away_team'] : array();
+
+			return array(
+				'timestamp'     => isset( $snapshot['timestamp'] ) ? (int) $snapshot['timestamp'] : 0,
+				'local_display' => isset( $snapshot['local_display'] ) ? sanitize_text_field( (string) $snapshot['local_display'] ) : '',
+				'time'          => isset( $snapshot['time'] ) ? sanitize_text_field( (string) $snapshot['time'] ) : '',
+				'status'        => isset( $snapshot['status'] ) ? sanitize_text_field( (string) $snapshot['status'] ) : '',
+				'venue'         => isset( $venue['name'] ) ? sanitize_text_field( (string) $venue['name'] ) : '',
+				'home_team'     => isset( $home['name'] ) ? sanitize_text_field( (string) $home['name'] ) : '',
+				'away_team'     => isset( $away['name'] ) ? sanitize_text_field( (string) $away['name'] ) : '',
+			);
+		}
+
+		/**
 		 * Get the option defaults.
 		 *
 		 * @return array
@@ -1086,6 +1276,31 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		}
 
 		/**
+		 * Clear the recent webhook activity log from the admin UI.
+		 *
+		 * @return void
+		 */
+		public function handle_clear_webhook_log_admin() {
+			if ( ! current_user_can( 'manage_sportspress' ) ) {
+				wp_die( esc_html__( 'You do not have permission to clear webhook activity logs.', 'tonys-sportspress-enhancements' ), 403 );
+			}
+
+			check_admin_referer( 'tse_sp_clear_webhook_log' );
+			delete_option( self::LOG_OPTION_KEY );
+
+			$redirect_url = add_query_arg(
+				array(
+					'tab'                    => self::TAB_WEBHOOKS,
+					'tse_sp_webhook_log'     => 'cleared',
+				),
+				wp_get_referer() ? wp_get_referer() : admin_url()
+			);
+
+			wp_safe_redirect( $redirect_url );
+			exit;
+		}
+
+		/**
 		 * Handle an admin AJAX test-send request.
 		 *
 		 * @return void
@@ -1131,6 +1346,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			$trigger = ! empty( $webhook['triggers'] ) ? $webhook['triggers'][0] : 'manual_test';
 			$context = $this->build_test_context( $trigger, $webhook, $test_event_id );
 			$result  = $this->deliver_webhook( $webhook['url'], $webhook['template'], $webhook, $context );
+			$this->append_webhook_log( $trigger, $test_event_id, $webhook, $context, $result );
 
 			if ( is_wp_error( $result ) ) {
 				wp_send_json_error(
@@ -1354,23 +1570,17 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 				return $empty;
 			}
 
-			$local = null;
-			$gmt   = null;
-			$timezone = $this->get_event_timezone();
-
-			if ( ! empty( $post->post_date_gmt ) && '0000-00-00 00:00:00' !== $post->post_date_gmt ) {
-				$gmt   = new DateTimeImmutable( $post->post_date_gmt, $utc );
-				$local = $gmt->setTimezone( $timezone );
-			} elseif ( ! empty( $post->post_date ) && '0000-00-00 00:00:00' !== $post->post_date ) {
-				$local = new DateTimeImmutable( $post->post_date, $timezone );
-				$gmt   = $local->setTimezone( $utc );
-			}
-
-			if ( ! $local instanceof DateTimeImmutable || ! $gmt instanceof DateTimeImmutable ) {
+			$timestamp = get_post_timestamp( $post, 'date' );
+			if ( ! $timestamp ) {
 				return $empty;
 			}
 
-			return $this->build_schedule_data( $local->getTimestamp(), $gmt->format( DATE_ATOM ) );
+			$gmt_iso = null;
+			if ( ! empty( $post->post_date_gmt ) && '0000-00-00 00:00:00' !== $post->post_date_gmt ) {
+				$gmt_iso = ( new DateTimeImmutable( $post->post_date_gmt, $utc ) )->format( DATE_ATOM );
+			}
+
+			return $this->build_schedule_data( $timestamp, $gmt_iso );
 		}
 
 		/**
@@ -1684,7 +1894,8 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 				}
 
 				$context = $this->build_context( $post_id, $trigger, $changes, $webhook );
-				$this->deliver_webhook( $url, isset( $webhook['template'] ) ? (string) $webhook['template'] : '', $webhook, $context );
+				$result  = $this->deliver_webhook( $url, isset( $webhook['template'] ) ? (string) $webhook['template'] : '', $webhook, $context );
+				$this->append_webhook_log( $trigger, $post_id, $webhook, $context, $result );
 			}
 		}
 
@@ -2162,8 +2373,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			$status   = $this->normalize_event_status_key( $status );
 
 			return array_merge(
-				$this->build_schedule_data( isset( $schedule['timestamp'] ) ? (int) $schedule['timestamp'] : 0, isset( $schedule['gmt_iso'] ) ? (string) $schedule['gmt_iso'] : null ),
-				$schedule,
+				$this->normalize_schedule_data( $schedule ),
 				array(
 					'status'    => $this->get_event_status_label( $status ),
 					'sp_status' => $status,
@@ -2325,7 +2535,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		 * @return string
 		 */
 		private function build_schedule_change_signature( $schedule, $venue, $teams, $status = '' ) {
-			$schedule = is_array( $schedule ) ? $schedule : array();
+			$schedule = $this->normalize_schedule_data( is_array( $schedule ) ? $schedule : array() );
 			$venue    = $this->normalize_venue_data( is_array( $venue ) ? $venue : array() );
 			$teams    = $this->normalize_team_data( $teams );
 			$status   = $this->normalize_event_status_key( $status );
@@ -2333,14 +2543,27 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 			return md5(
 				wp_json_encode(
 					array(
-						'gmt_iso'   => isset( $schedule['gmt_iso'] ) ? (string) $schedule['gmt_iso'] : '',
-						'local_iso' => isset( $schedule['local_iso'] ) ? (string) $schedule['local_iso'] : '',
+						'timestamp' => isset( $schedule['timestamp'] ) ? (int) $schedule['timestamp'] : 0,
 						'status'    => $status,
 						'venue'     => $venue,
 						'teams'     => $teams,
 					)
 				)
 			);
+		}
+
+		/**
+		 * Determine whether two schedule payloads represent the same date/time.
+		 *
+		 * @param array $left  First schedule payload.
+		 * @param array $right Second schedule payload.
+		 * @return bool
+		 */
+		private function schedule_times_match( $left, $right ) {
+			$left  = $this->normalize_schedule_data( is_array( $left ) ? $left : array() );
+			$right = $this->normalize_schedule_data( is_array( $right ) ? $right : array() );
+
+			return (int) $left['timestamp'] === (int) $right['timestamp'];
 		}
 
 		/**
@@ -2630,6 +2853,55 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		 */
 		private function get_event_timezone() {
 			return wp_timezone();
+		}
+
+		/**
+		 * Normalize schedule arrays to one canonical event instant.
+		 *
+		 * @param array $schedule Schedule data.
+		 * @return array
+		 */
+		private function normalize_schedule_data( $schedule ) {
+			$schedule  = is_array( $schedule ) ? $schedule : array();
+			$timestamp = isset( $schedule['timestamp'] ) ? (int) $schedule['timestamp'] : 0;
+
+			if ( $timestamp <= 0 && ! empty( $schedule['gmt_iso'] ) ) {
+				$timestamp = $this->parse_schedule_timestamp( (string) $schedule['gmt_iso'] );
+			}
+
+			if ( $timestamp <= 0 && ! empty( $schedule['local_iso'] ) ) {
+				$timestamp = $this->parse_schedule_timestamp( (string) $schedule['local_iso'] );
+			}
+
+			if ( $timestamp <= 0 && ! empty( $schedule['date'] ) ) {
+				$time      = ! empty( $schedule['time'] ) ? (string) $schedule['time'] : '12:00 AM';
+				$timestamp = $this->parse_schedule_timestamp( trim( (string) $schedule['date'] . ' ' . $time ), $this->get_event_timezone() );
+			}
+
+			return $this->build_schedule_data( $timestamp );
+		}
+
+		/**
+		 * Parse a schedule timestamp without leaking DateTime exceptions.
+		 *
+		 * @param string             $value    Date/time value.
+		 * @param DateTimeZone|null  $timezone Optional timezone for local values.
+		 * @return int
+		 */
+		private function parse_schedule_timestamp( $value, $timezone = null ) {
+			$value = trim( (string) $value );
+			if ( '' === $value ) {
+				return 0;
+			}
+
+			try {
+				$date = $timezone instanceof DateTimeZone ? new DateTimeImmutable( $value, $timezone ) : new DateTimeImmutable( $value );
+			} catch ( Exception $exception ) {
+				unset( $exception );
+				return 0;
+			}
+
+			return $date->getTimestamp();
 		}
 
 		/**
