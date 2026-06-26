@@ -103,7 +103,7 @@ function tony_sportspress_get_event_status_rest_field( $object, $field_name, $re
 	$event_id = isset( $object['id'] ) ? absint( $object['id'] ) : 0;
 
 	if ( $event_id <= 0 ) {
-		return 'on-time';
+		return '';
 	}
 
 	$status = sanitize_key( (string) get_post_meta( $event_id, 'sp_status', true ) );
