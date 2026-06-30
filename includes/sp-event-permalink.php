@@ -26,12 +26,12 @@ function custom_event_permalink($permalink, $post) {
         return $permalink;
     }
 
-    $event = new SP_Event($post->ID);
     $teams = get_post_meta($post->ID,'sp_team', false);
     $format = get_post_meta($post->ID,'sp_format', true);
+    $teams = array_values( array_filter( array_map( 'absint', $teams ) ) );
     sort($teams);
     $seasons = get_the_terms($post->ID, 'sp_season', true );
-    if ($seasons) {
+    if ($seasons && ! is_wp_error( $seasons )) {
       $seasons_slug = implode(
         "-",
         array_map(function($season){return $season->slug;},$seasons),
@@ -41,6 +41,10 @@ function custom_event_permalink($permalink, $post) {
     };
 
     // Get the teams associated with the event
+    if ( count( $teams ) < 2 ) {
+        return $permalink;
+    }
+
     $team_1 = get_post($teams[0]);
     $team_2 = get_post($teams[1]);
 

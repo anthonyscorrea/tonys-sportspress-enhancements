@@ -78,4 +78,71 @@ class Test_SP_Event_Permalink extends WP_UnitTestCase {
 		$this->assertSame( 456, $query->get( 'p' ) );
 		$this->assertSame( array( 'publish', 'future' ), $query->get( 'post_status' ) );
 	}
+
+	/**
+	 * Events without teams should keep the original permalink.
+	 */
+	public function test_event_permalink_without_teams_keeps_original_permalink() {
+		$event_id  = self::factory()->post->create(
+			array(
+				'post_type' => 'sp_event',
+			)
+		);
+		$permalink = 'https://example.test/events/original';
+
+		$this->assertSame( $permalink, custom_event_permalink( $permalink, get_post( $event_id ) ) );
+	}
+
+	/**
+	 * Events with only one team should keep the original permalink.
+	 */
+	public function test_event_permalink_with_one_team_keeps_original_permalink() {
+		$team_id  = self::factory()->post->create(
+			array(
+				'post_type' => 'sp_team',
+			)
+		);
+		$event_id = self::factory()->post->create(
+			array(
+				'post_type' => 'sp_event',
+			)
+		);
+
+		add_post_meta( $event_id, 'sp_team', $team_id );
+
+		$permalink = 'https://example.test/events/original';
+
+		$this->assertSame( $permalink, custom_event_permalink( $permalink, get_post( $event_id ) ) );
+	}
+
+	/**
+	 * Events with two teams should use the custom team permalink.
+	 */
+	public function test_event_permalink_with_two_teams_uses_custom_permalink() {
+		$team_1_id = self::factory()->post->create(
+			array(
+				'post_name' => 'blue',
+				'post_type' => 'sp_team',
+			)
+		);
+		$team_2_id = self::factory()->post->create(
+			array(
+				'post_name' => 'gold',
+				'post_type' => 'sp_team',
+			)
+		);
+		$event_id  = self::factory()->post->create(
+			array(
+				'post_type' => 'sp_event',
+			)
+		);
+
+		add_post_meta( $event_id, 'sp_team', $team_2_id );
+		add_post_meta( $event_id, 'sp_team', $team_1_id );
+		update_post_meta( $event_id, 'sp_format', 'league' );
+
+		$permalink = custom_event_permalink( 'https://example.test/events/original', get_post( $event_id ) );
+
+		$this->assertStringEndsWith( '/game/no-season/blue-gold/' . $event_id, $permalink );
+	}
 }
