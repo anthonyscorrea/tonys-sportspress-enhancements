@@ -78,6 +78,8 @@ class Test_Open_Graph_Tags extends WP_UnitTestCase {
 
 		update_option( 'sportspress_event_reverse_teams', 'no' );
 		update_option( 'sportspress_event_teams_delimiter', 'vs' );
+		update_option( 'tony_sportspress_event_results_row_order', 'home_away' );
+		update_option( 'tony_sportspress_event_results_away_first', 'no' );
 	}
 
 	/**
@@ -114,6 +116,17 @@ class Test_Open_Graph_Tags extends WP_UnitTestCase {
 				)
 			)
 		);
+	}
+
+	/**
+	 * Jetpack Open Graph output is disabled on SportsPress event pages.
+	 */
+	public function test_jetpack_open_graph_is_disabled_for_event_pages() {
+		$event = $this->create_event();
+
+		$this->go_to( get_permalink( $event ) );
+
+		$this->assertFalse( asc_sp_disable_jetpack_open_graph_for_events( true ) );
 	}
 
 	/**
@@ -204,6 +217,37 @@ class Test_Open_Graph_Tags extends WP_UnitTestCase {
 		$meta = asc_sp_event_open_graph_data( $event );
 
 		$this->assertStringContainsString( 'Hawks 7-4 Electrons', $meta['title'] );
+	}
+
+	/**
+	 * Positional result rows are mapped to event teams before building result titles.
+	 */
+	public function test_result_event_with_positional_scores_uses_team_names_once() {
+		$home  = $this->create_team( 'Electrons' );
+		$away  = $this->create_team( 'Classics' );
+		$event = $this->create_event(
+			array(
+				'post_status' => 'publish',
+				'post_title'  => 'Electrons 13-1 ClassicsElectrons',
+			)
+		);
+
+		add_post_meta( $event, 'sp_team', $home );
+		add_post_meta( $event, 'sp_team', $away );
+
+		if ( property_exists( 'SP_Event', 'statuses' ) ) {
+			SP_Event::$statuses[ $event ] = 'results';
+			SP_Event::$results[ $event ]  = array(
+				0 => array( 'r' => 'R' ),
+				1 => array( 'r' => '13' ),
+				2 => array( 'r' => '1' ),
+			);
+		}
+
+		$meta = asc_sp_event_open_graph_data( $event );
+
+		$this->assertSame( 'Electrons 13-1 Classics - Sat 5/2/26', $meta['title'] );
+		$this->assertStringNotContainsString( 'ClassicsElectrons', $meta['title'] );
 	}
 
 	/**

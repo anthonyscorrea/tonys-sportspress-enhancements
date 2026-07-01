@@ -6,6 +6,21 @@
  */
 
 add_action( 'wp_head', 'custom_open_graph_tags_with_sportspress_integration' );
+add_filter( 'jetpack_enable_open_graph', 'asc_sp_disable_jetpack_open_graph_for_events' );
+
+/**
+ * Disable Jetpack's default Open Graph tags for SportsPress events.
+ *
+ * @param bool $enabled Whether Jetpack Open Graph tags should be printed.
+ * @return bool
+ */
+function asc_sp_disable_jetpack_open_graph_for_events( $enabled ) {
+	if ( is_singular( 'sp_event' ) ) {
+		return false;
+	}
+
+	return $enabled;
+}
 
 /**
  * Build the dynamic matchup image URL for an event.
@@ -274,6 +289,80 @@ function asc_sp_event_results( $event = null ) {
 }
 
 /**
+ * Get the configured event results row order.
+ *
+ * @return string
+ */
+function asc_sp_event_results_row_order() {
+	$row_order = get_option( 'tony_sportspress_event_results_row_order', '' );
+
+	if ( '' === $row_order ) {
+		$legacy_away_first = 'yes' === get_option( 'tony_sportspress_event_results_away_first', 'no' );
+		$row_order         = $legacy_away_first ? 'away_home' : 'home_away';
+	}
+
+	return 'away_home' === $row_order ? 'away_home' : 'home_away';
+}
+
+/**
+ * Normalize SportsPress result rows to event team IDs in display order.
+ *
+ * @param WP_Post $post    Event post.
+ * @param array   $results Event results data.
+ * @return array
+ */
+function asc_sp_event_ordered_result_rows( WP_Post $post, array $results ) {
+	unset( $results[0] );
+
+	$results = array_filter( $results );
+	$teams   = array_values( array_filter( array_map( 'absint', (array) get_post_meta( $post->ID, 'sp_team', false ) ) ) );
+
+	if ( empty( $teams ) ) {
+		return $results;
+	}
+
+	if ( 'away_home' === asc_sp_event_results_row_order() ) {
+		$teams = array_reverse( $teams );
+	}
+
+	$ordered = array();
+
+	foreach ( $teams as $index => $team_id ) {
+		if ( array_key_exists( $team_id, $results ) ) {
+			$ordered[ $team_id ] = $results[ $team_id ];
+			continue;
+		}
+
+		if ( array_key_exists( $index, $results ) ) {
+			$ordered[ $team_id ] = $results[ $index ];
+			continue;
+		}
+
+		$one_based_index = $index + 1;
+		if ( array_key_exists( $one_based_index, $results ) ) {
+			$ordered[ $team_id ] = $results[ $one_based_index ];
+		}
+	}
+
+	foreach ( $results as $team_id => $result ) {
+		if ( array_key_exists( $team_id, $ordered ) ) {
+			continue;
+		}
+
+		if ( is_int( $team_id ) || ctype_digit( (string) $team_id ) ) {
+			$position = (int) $team_id;
+			if ( array_key_exists( $position, $teams ) || array_key_exists( $position - 1, $teams ) ) {
+				continue;
+			}
+		}
+
+		$ordered[ $team_id ] = $result;
+	}
+
+	return ! empty( $ordered ) ? $ordered : $results;
+}
+
+/**
  * Convert a result row into outcome labels.
  *
  * @param array $result Result row.
@@ -316,16 +405,10 @@ function asc_sp_event_result_outcomes( array $result ) {
  * @return array{title:string,description:string}|null
  */
 function asc_sp_event_result_meta( WP_Post $post, array $results, $description ) {
-	unset( $results[0] );
-
-	$results = array_filter( $results );
+	$results = asc_sp_event_ordered_result_rows( $post, $results );
 
 	if ( count( $results ) < 2 ) {
 		return null;
-	}
-
-	if ( 'yes' === get_option( 'sportspress_event_reverse_teams', 'no' ) ) {
-		$results = array_reverse( $results, true );
 	}
 
 	$teams_result_array = array();
