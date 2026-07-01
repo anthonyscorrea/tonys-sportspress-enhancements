@@ -727,18 +727,23 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 		private function render_webhook_log() {
 			$entries = $this->get_webhook_log();
 
-			echo '<div style="margin:18px 0 12px;padding:16px 18px;border:1px solid #dcdcde;background:#fff;max-width:1100px;">';
-			echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">';
-			echo '<strong>' . esc_html__( 'Recent Webhook Activity', 'tonys-sportspress-enhancements' ) . '</strong>';
+			echo '<details style="margin:18px 0 12px;padding:0;border:1px solid #dcdcde;background:#fff;max-width:1100px;">';
+			echo '<summary style="cursor:pointer;padding:14px 18px;font-weight:600;">';
+			echo esc_html__( 'Recent Webhook Activity', 'tonys-sportspress-enhancements' );
+			echo ' <span style="font-weight:400;color:#646970;">(' . esc_html( number_format_i18n( count( $entries ) ) ) . ')</span>';
+			echo '</summary>';
+			echo '<div style="padding:0 18px 18px;">';
 			if ( ! empty( $entries ) ) {
+				echo '<p style="margin:0 0 12px;">';
 				echo '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=tse_sp_clear_webhook_log' ), 'tse_sp_clear_webhook_log' ) ) . '" class="button button-secondary" onclick="return window.confirm(' . wp_json_encode( __( 'Clear webhook activity log?', 'tonys-sportspress-enhancements' ) ) . ');">' . esc_html__( 'Clear Log', 'tonys-sportspress-enhancements' ) . '</a>';
+				echo '</p>';
 			}
-			echo '</div>';
 			echo '<p class="description" style="margin:0 0 12px;">' . esc_html__( 'Shows the most recent webhook delivery attempts, including the trigger, event, destination row, status, and compact before/after change data.', 'tonys-sportspress-enhancements' ) . '</p>';
 
 			if ( empty( $entries ) ) {
 				echo '<p style="margin:0;">' . esc_html__( 'No webhook activity has been logged yet.', 'tonys-sportspress-enhancements' ) . '</p>';
 				echo '</div>';
+				echo '</details>';
 				return;
 			}
 
@@ -785,6 +790,7 @@ if ( ! class_exists( 'Tony_Sportspress_Webhooks' ) ) {
 
 			echo '</tbody></table>';
 			echo '</div>';
+			echo '</details>';
 		}
 
 		/**
